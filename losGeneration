@@ -13,6 +13,9 @@ from scipy.optimize import differential_evolution
 import rasterio
 import time
 from pathlib import Path
+import csv
+import os
+import numpy as np
 
 # main loop---------------------------------------------------------------
 
@@ -57,6 +60,7 @@ def main():
 
     ships_history_lla = []
     los_graph_history = []
+    snap_ships, snap_uav, snap_adj = [], [], []
     uav_traj_optns = {}  # key = time, value = UAV LLA coordinate
     curr_time = 0
 
@@ -80,6 +84,12 @@ def main():
         except TimeoutError:
             break
         uav_traj_optns[curr_time] = uav_result['uav_lla'].copy()
+
+        #save snapshot
+        snap_ships.append(ships_enu.copy())
+        snap_uav.append(uav_result['uavs'][0]['uav_enu'].copy())
+        snap_adj.append(uav_result['augmented_graph'].toarray())
+        
 
         # plot this snapshot: ship-ship LoS + the UAV + its links
         plot2D_with_uav(
@@ -120,6 +130,8 @@ def main():
         output_dir=plot_dir,
         filename='motion_summary.png',
     )
+
+    export_for_ns3('ns3_export', calc_interval * 60, snap_ships, snap_uav, snap_adj)
 
 # dem helpers-------------------------------------------------------------
 
@@ -823,6 +835,56 @@ def update_ship_positions_lla(
 
     return new_lla
 
+#export for ns3 helpers-------------------------------------------------------
+
+def export_for_ns3(out_dir, step_s, ships_enu_hist, uav_enu_hist, adj_hist):
+    """
+    ships_enu_hist : list of (n_ships, 3) arrays - ship ENU *at placement time*
+    uav_enu_hist   : list of (3,) arrays          - UAV ENU chosen for that step
+    adj_hist       : list of (n_ships+1, n_ships+1) dense arrays, UAV is the last
+                     row/col; entry > 0 means a LoS link (value = distance in m)
+    """
+    n_steps = len(uav_enu_hist)
+    assert len(ships_enu_hist) == n_steps == len(adj_hist), "histories differ in length"
+    n_ships = np.asarray(ships_enu_hist[0]).shape[0]
+    os.makedirs(out_dir, exist_ok=True)
+
+    with open(os.path.join(out_dir, "nodes.csv"), "w", newline="") as f:
+        w = csv.writer(f, lineterminator="\n")
+        w.writerow(["step", "t_s", "node", "x", "y", "z"])
+        for k in range(n_steps):
+            t = k * step_s
+            ships = np.asarray(ships_enu_hist[k], dtype=float)
+            for n in range(n_ships):
+                w.writerow([k, t, n, *ships[n]])
+            w.writerow([k, t, n_ships, *np.asarray(uav_enu_hist[k], dtype=float)])
+
+    n_edges = []
+    with open(os.path.join(out_dir, "links.csv"), "w", newline="") as f:
+        w = csv.writer(f, lineterminator="\n")
+        w.writerow(["step", "t_s", "i", "j", "dist_m"])
+        for k in range(n_steps):
+            adj = np.asarray(adj_hist[k], dtype=float)
+            assert adj.shape == (n_ships + 1, n_ships + 1), "adjacency must include the UAV"
+            if not np.array_equal(adj > 0, (adj > 0).T):
+                print(f"WARNING: step {k} adjacency is not symmetric")
+            cnt = 0
+            for i in range(n_ships + 1):
+                for j in range(i + 1, n_ships + 1):
+                    if adj[i, j] > 0:
+                        w.writerow([k, k * step_s, i, j, adj[i, j]])
+                        cnt += 1
+            n_edges.append(cnt)
+
+    # Sanity report
+    print(f"Exported {n_steps} steps, {n_ships} ships + 1 UAV -> {out_dir}/")
+    print("LoS edges per step:", n_edges)
+    uav = np.asarray(uav_enu_hist, dtype=float)
+    if n_steps > 1:
+        jump = np.linalg.norm(np.diff(uav, axis=0), axis=1)
+        print(f"UAV displacement between steps: max {jump.max()/1000:.1f} km "
+              f"-> implied speed {jump.max()/step_s:.0f} m/s "
+              f"({jump.max()/step_s*1.944:.0f} kn)")
 
 # run main loop-----------------------------------------------------------
 if __name__ == "__main__":
