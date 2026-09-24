@@ -1,5 +1,5 @@
 /*
- * uav_mesh_eval.cc  
+ * uav_mesh_eval.cc   
  * ============================================================================
  * WHAT THIS PROGRAM DOES
  * ----------------------------------------------------------------------------
@@ -8,34 +8,32 @@
  * behaviour, real routing (OLSR/AODV), and real UDP traffic on top of that
  * graph, and reports packet delivery ratio, delay, hop count, throughput, 
  * and how the network behaves as the topology changes over time.
- *
- * RADIO MODEL
- * ----------------------------------------------------------------------------
- *   Ship <-> ship : L-band  (1.5 GHz default),  30 W tx power, own 802.11 channel
- *   Ship <-> UAV  : Ku-band (16  GHz default),  50 W tx power, own 802.11 channel
- * Every ship therefore carries two radios; the UAV carries one (Ku only).
- *
- * The losGeneration.py's LoS graph decides WHICH links can exist at all (it already
- * accounts for radio horizon and Fresnel-zone terrain obstruction). For every
- * edge the losGeneration.py says is clear, this program computes a maritime PATH LOSS
- * for that link (see "MARITIME PATH LOSS MODEL" below) and writes it into an
- * ns-3 MatrixPropagationLossModel. Antenna gain, tx power and noise figure are
- * then applied by the ns-3 PHY as usual, so ns-3 - not us - decides whether a
- * given LoS link actually has enough SNR to be usable. Edges the losGeneration.py
+ * 
+ * For every edge the notebook says is clear, this program computes a
+ * maritime PATH LOSS for that link and writes it into the matching band's 
+ * ns-3 MatrixPropagationLossModel. Antenna gain, tx power and noise figure 
+ * are then applied by the ns-3 PHY as usual, so ns-3 decides whether a 
+ * given LoS link actually has enough SNR to be usable. Edges the notebook 
  * says are NOT clear get an arbitrarily huge loss, i.e. they are inaudible.
  *
+ * 
+ * RADIO MODEL
+ * ----------------------------------------------------------------------------
+ * Ship <-> ship : L-band  (1.5 GHz default), 30 W tx power, ships-only channel
+ * Ship <-> UAV  : L-band  (same channel as above - the UAV is now on it too)
+ *                 AND Ku-band (16 GHz default), 50 W tx power, own channel
+ *
+ * losGeneration.py's LoS graph decides WHICH links can exist at all, per band
+ * (it already accounts for radio horizon and Fresnel-zone terrain
+ * obstruction, checked separately per band for any pair touching the UAV).
+ * 
+ * 
  * MARITIME PATH LOSS MODEL
  * ----------------------------------------------------------------------------
- * Over water, free-space path loss (FSPL) alone is a poor model: a large
- * fraction of the energy also reaches the receiver via a specular reflection
- * off the sea surface, and that reflected ray interferes with the direct ray.
- * This produces the well-known maritime "lobing" pattern (constructive and
- * destructive interference rings as range or height changes), which is very
- * different from FSPL's smooth 1/d^2 falloff. This file implements the
- * classical two-ray (direct + one specular sea-surface bounce) propagation
- * model used throughout the naval radar/comms literature (Blake, "Radar
- * Range-Performance Analysis"; Kerr, "Propagation of Short Radio Waves"):
- *
+ * This file implements the classical two-ray (direct + one specular sea-surface 
+ * bounce) propagation model used throughout the naval radar/comms literature (Blake, 
+ * "Radar Range-Performance Analysis"; Kerr, "Propagation of Short Radio Waves"):
+ * 
  *   1. Geometry: direct ray length r1 and sea-reflected ray length r2 are
  *      computed from the flat-earth image geometry (antenna heights h1, h2,
  *      horizontal separation d).
@@ -43,34 +41,36 @@
  *      seawater is computed from its complex relative permittivity (a
  *      conductivity-dominated dielectric at these frequencies), separately
  *      for the two rays' grazing angle, band, and polarisation.
- *   3. Roughness: the sea is not a perfect mirror. Ament's (1953) roughness
- *      factor attenuates the coherent reflection based on RMS wave height,
- *      which is set from a Douglas sea-state number.
- *   4. Combine: the direct and (reflection-coefficient- and roughness-
- *      weighted) reflected rays are summed coherently (with their relative
- *      phase), giving a total path loss that oscillates around FSPL at short
- *      range and asymptotes to the classic ~d^4 "flat-earth" law at long
- *      range, exactly as the physics literature describes.
+ *   3. Roughness: Ament's (1953) roughness factor attenuates the coherent 
+ *      reflection based on RMS wave height, which is set from a Douglas 
+ *      sea-state number.
+ *   4. Combine: the direct and (reflection-coefficient and roughness-weighted) 
+ *      reflected rays are summed coherently, giving a total path loss 
  *
- * This is the most physically faithful loss model reasonably implementable
- * without a full ray-tracer or an empirical clutter database. It is still an
- * idealisation: it assumes a flat sea (no evaporation duct, no atmospheric
- * refraction beyond the losGeneration.py's radio-horizon check, no swell shadowing,
- * single-bounce only). See the CAVEATS block further down for what it does
- * and doesn't capture.
+ * The loss model is still an idealisation: it assumes a flat sea (no evaporation 
+ * duct, no atmospheric refraction beyond losGeneration.py's radio-horizon check, 
+ * no swell shadowing, single-bounce only). See the CAVEATS block further down for 
+ * what it does and doesn't capture.
+ *
+ * TRAFFIC MODEL
+ * ----------------------------------------------------------------------------
+ *   Telemetry    : every ship broadcasts a small status packet on L-band
+ *                  every --telemetryPeriodS seconds (default 5s), heard by
+ *                  every other ship AND the UAV.
+ *   Data transfer: every ship sends a burst of --dataBytes worth of packets
+ *                  to the UAV every --dataPeriodMin minutes (default 6 min),
+ *                  addressed to the UAV's Ku-band interface - though routing
+ *                  can divert it over L-band during a Ku outage; see
+ *                  PeriodicDataTransfer's call site for the full caveat.
  *
  * USAGE
  * ----------------------------------------------------------------------------
  * Place in ns-3's scratch/ and run from the ns-3 root, e.g.
  *   ./ns3 run "scratch/uav_mesh_eval --dir=ns3_export --useUav=1 --out=with_uav"
  *   ./ns3 run "scratch/uav_mesh_eval --dir=ns3_export --useUav=0 --out=no_uav"
- * Run --PrintHelp for the full list of --flags (radio powers/gains, band
- * frequencies, sea state, polarisation, routing protocol, traffic rate, ...).
- *
- * Not compiled by the author against your ns-3 checkout - the maritime-loss
- * math (TwoRaySeaLoss and its helpers) was unit-tested standalone with g++,
- * but the ns-3 API calls around it were not; expect minor version-specific
- * fixes, as with earlier revisions of this file.
+ * Run --PrintHelp for the full list of --flags (radio powers/gains per band
+ * and per platform, band frequencies, sea state, polarisation, routing
+ * protocol, telemetry/data-transfer periods and sizes, ...).
  */
 
 #include "ns3/aodv-helper.h"
@@ -82,8 +82,8 @@
 #include "ns3/network-module.h"
 #include "ns3/olsr-helper.h"
 #include "ns3/propagation-module.h"
+#include "ns3/tag.h"
 #include "ns3/wifi-module.h"
-
 #include <algorithm>
 #include <cmath>
 #include <complex>
@@ -94,6 +94,7 @@
 #include <set>
 #include <sstream>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -103,11 +104,15 @@ NS_LOG_COMPONENT_DEFINE("UavMeshEval");
 
 // One LoS edge for one step, as read from links.csv. h1/h2 (antenna heights
 // above the sea surface, metres) are filled in after nodes.csv is parsed,
-// since links.csv only gives node indices and distance, not height.
+// since links.csv only gives node indices, band, and distance, not height.
+// isKu comes directly from links.csv's "band" column: a ship-UAV pair can 
+// appear as TWO separate Edge entries for the same (i, j) in the same step, 
+// one L and one Ku, if both bands are clear simultaneously.
 struct Edge
 {
     uint32_t i;
     uint32_t j;
+    bool isKu;   // true = Ku-band link, false = L-band link
     double dist; // horizontal-equivalent distance between i and j, metres
     double h1;   // antenna height of node i, metres above sea level
     double h2;   // antenna height of node j, metres above sea level
@@ -121,30 +126,31 @@ struct Edge
 // main() and only read afterwards.
 // ---------------------------------------------------------------------------
 static NodeContainer g_nodes;                    // ships 0..nShips-1, then the UAV last
-static Ptr<MatrixPropagationLossModel> g_lossL;  // ship<->ship (L-band) channel's loss matrix
-static Ptr<MatrixPropagationLossModel> g_lossKu; // ship<->UAV (Ku-band) channel's loss matrix
+static Ptr<MatrixPropagationLossModel> g_lossL;  // L-band channel's loss matrix (ships AND UAV)
+static Ptr<MatrixPropagationLossModel> g_lossKu; // Ku-band channel's loss matrix (ships AND UAV)
 static std::vector<std::vector<Edge>> g_edges;   // g_edges[step] = LoS edges active in that step
-static bool g_useUav = true;                     // false => Ku links are never turned on (baseline run)
+static bool g_useUav = true;                     // false => any edge touching the UAV is skipped (baseline run)
 static double g_freqLGhz = 1.5;                  // L-band centre frequency
 static double g_freqKuGhz = 16.0;                // Ku-band centre frequency
 static double g_noLinkDb = 250.0;                // loss used for "no LoS" pairs (effectively infinite)
 static double g_stepS = 300.0;                   // seconds between notebook steps (topology snapshots)
 static int g_seaState = 3;                       // Douglas sea state 0 (calm) .. 9 (phenomenal), for roughness
 static bool g_polV = true;                       // true = vertical polarisation, false = horizontal
-static std::vector<uint64_t> g_tx;               // app-layer packets sent, bucketed by step
-static std::vector<uint64_t> g_rx;               // app-layer packets received, bucketed by step
+static std::vector<uint64_t> g_tx;               // telemetry packets sent, bucketed by step
+static std::vector<uint64_t> g_rx;               // telemetry packets received (summed over all receivers), bucketed by step
+static std::vector<std::vector<uint64_t>> g_telemetryRx; // receptions by sender and step
 
 // --- continuous loss refresh (see RefreshLoss() below) ---------------------
 static double g_refreshS = 5.0; // how often we recompute path loss from live position
 static double g_rampS = 20.0;   // how long a link fades in/out when it starts/stops having LoS
 static double g_simTimeGlobal = 0.0; // simTime, so RefreshLoss knows when to stop rescheduling itself
-// Per node-pair (i<j) state used to detect on/off transitions and time the fade.
-static std::map<std::pair<uint32_t, uint32_t>, bool> g_linkOn;
-static std::map<std::pair<uint32_t, uint32_t>, double> g_transitionT;
+// Per (node pair, band) state used to detect on/off transitions and time the fade. 
+// Keyed on (i, j, isKu) rather than just (i, j), because a ship-UAV pair's L-band and Ku-band links are independent and can be in different states.
+using LinkKey = std::tuple<uint32_t, uint32_t, bool>;
+static std::map<LinkKey, bool> g_linkOn;
+static std::map<LinkKey, double> g_transitionT;
 
-// Split a CSV line on a delimiter, trimming a trailing '\r' (files written on
-// Windows, or by Python's csv module without an explicit line terminator,
-// often carry one; without this the last field on each line fails to parse).
+// Split a CSV line on a delimiter, trimming a trailing '\r' if present (for Windows-style line endings).
 static std::vector<std::string>
 Split(const std::string& s, char d)
 {
@@ -167,8 +173,6 @@ Split(const std::string& s, char d)
 // ===========================================================================
 
 // Free-space path loss in dB at distance d (metres) and frequency fGhz (GHz).
-// Used both directly (Fspl(r1,...) is the "carrier" term the two-ray model
-// modulates) and as a quick reference figure in the link-budget report.
 static double
 Fspl(double d, double fGhz)
 {
@@ -181,16 +185,12 @@ WattsToDbm(double w)
     return 10.0 * std::log10(w * 1000.0);
 }
 
-// Complex relative permittivity of seawater, eps_r = eps' - j*eps'', bundled
-// as (eps', sigma) since the imaginary part is frequency-dependent through
-// the conductivity term (see FresnelReflectionCoefficient). Seawater at
-// microwave frequencies is dominated by its high conductivity, so its
-// effective loss tangent is large and roughly frequency-independent over an
-// octave or so; these figures (salinity ~35 ppt, ~20 C) are representative
-// values distilled from the standard references (Ulaby, Moore & Fung,
-// "Microwave Remote Sensing", vol. 3; Klein & Swift 1977) and are accurate
-// to maybe +/-15%, not laboratory-grade. Replace with a full Klein-Swift (or
-// Debye double-pole) fit if you need better than that.
+// Complex relative permittivity of seawater, eps_r = eps' - j*eps'', bundled as 
+// (eps', sigma) since the imaginary part is frequency-dependent through the 
+// conductivity term (see FresnelReflectionCoefficient). Salinity ~35 ppt, ~20 C 
+// are representative values distilled from the standard references (Ulaby, Moore & 
+// Fung, "Microwave Remote Sensing", vol. 3; Klein & Swift 1977) and are accurate
+// to maybe +/-15%
 struct SeaDielectric
 {
     double epsR;  // real relative permittivity
@@ -212,20 +212,13 @@ SeaWaterDielectric(double freqGhz)
 }
 
 // Complex Fresnel reflection coefficient of a flat seawater surface at
-// grazing angle grazingRad (radians, measured from the surface - NOT from
-// the normal), for the given frequency and polarisation. This is the
-// standard two-medium (air over seawater) Fresnel formula:
+// grazing angle grazingRad (radians, measured from the surface), for the 
+// given frequency and polarisation. This is the air over seawater Fresnel formula:
 //
 //   R_h = (sin(psi) - sqrt(eps - cos^2(psi))) / (sin(psi) + sqrt(eps - cos^2(psi)))   [horizontal]
 //   R_v = (eps*sin(psi) - sqrt(eps - cos^2(psi))) / (eps*sin(psi) + sqrt(eps - cos^2(psi)))  [vertical]
 //
-// Horizontal polarisation reflects strongly (|R| approx 1) at all practical
-// maritime grazing angles. Vertical polarisation has a Brewster-angle dip:
-// its reflectivity falls sharply once the grazing angle exceeds roughly
-// sqrt(1/eps_r) radians (a few degrees for seawater), which is why elevated
-// links (e.g. to a UAV) see much less multipath than low grazing ship-ship
-// links once they're not near-grazing. Most simple ship/UAV whip or blade
-// antennas are vertically polarised, hence g_polV defaults to true.
+// Most simple ship/UAV whip or blade antennas are vertically polarised, hence g_polV defaults to true.
 static std::complex<double>
 FresnelReflectionCoefficient(double grazingRad, double freqGhz, bool vertical)
 {
@@ -348,17 +341,17 @@ TwoRaySeaLoss(double d, double h1, double h2, double freqGhz, int seaState, bool
 //     diffuse (non-specular) sea clutter, and, closer to shore, land clutter;
 //     none of that is modelled.
 //   - Flat-earth geometry. Fine at these ranges (a few tens of km) given the
-//     losGeneration.py's own radio-horizon gate already excludes over-the-horizon
+//     notebook's own radio-horizon gate already excludes over-the-horizon
 //     links; a curved-earth (4/3-Earth-radius) correction would only matter
 //     near the extreme edge of that horizon.
 //   - No evaporation duct / anomalous propagation. Marine evaporation ducts
 //     can extend VHF/UHF and low-microwave range well beyond geometric LoS,
-//     which this model (and the losGeneration.py's LoS graph) does not represent.
+//     which this model (and the notebook's LoS graph) does not represent.
 //   - Sea state is a single global knob (g_seaState / --seaState), not
 //     spatially or temporally varying, and the RMS-height table is a coarse
 //     approximation - see SeaStateRmsHeight's comment for how to replace it
 //     with a measured significant wave height.
-//   - Antenna heights are taken directly from the losGeneration.py's ENU z-coordinate
+//   - Antenna heights are taken directly from the notebook's ENU z-coordinate
 //     (altitude above its local sea-level reference), which assumes that
 //     reference is close enough to true sea level for the geometry to be
 //     valid; ship deck motion (roll/pitch/heave) is not modelled.
@@ -373,19 +366,65 @@ Bucket()
     return std::min<uint32_t>(k, g_tx.size() - 1);
 }
 
-// Trace callbacks: count application-layer packets sent/received, bucketed by
-// which notebook step was active when they occurred. Used for the per-step
-// PDR breakdown in *_steps.csv.
-static void
-OnTx(Ptr<const Packet> p)
+class TelemetrySenderTag : public Tag
 {
-    g_tx[Bucket()]++;
-}
+  public:
+    static TypeId GetTypeId()
+    {
+        static TypeId tid =
+            TypeId("ns3::TelemetrySenderTag").SetParent<Tag>().AddConstructor<TelemetrySenderTag>();
+        return tid;
+    }
+
+    TypeId GetInstanceTypeId() const override
+    {
+        return GetTypeId();
+    }
+
+    uint32_t GetSerializedSize() const override
+    {
+        return sizeof(uint32_t);
+    }
+
+    void Serialize(TagBuffer buffer) const override
+    {
+        buffer.WriteU32(m_sender);
+    }
+
+    void Deserialize(TagBuffer buffer) override
+    {
+        m_sender = buffer.ReadU32();
+    }
+
+    void Print(std::ostream& os) const override
+    {
+        os << "sender=" << m_sender;
+    }
+
+    void SetSender(uint32_t sender)
+    {
+        m_sender = sender;
+    }
+
+    uint32_t GetSender() const
+    {
+        return m_sender;
+    }
+
+  private:
+    uint32_t m_sender = 0;
+};
 
 static void
-OnRx(Ptr<const Packet> p, const Address& from)
+OnTelemetryRx(Ptr<const Packet> packet, const Address& from)
 {
-    g_rx[Bucket()]++;
+    const uint32_t step = Bucket();
+    g_rx[step]++;
+    TelemetrySenderTag tag;
+    if (packet->PeekPacketTag(tag) && tag.GetSender() < g_telemetryRx.size())
+    {
+        g_telemetryRx[tag.GetSender()][step]++;
+    }
 }
 
 // ===========================================================================
@@ -396,7 +435,7 @@ OnRx(Ptr<const Packet> p, const Address& from)
 // expensive. But WHICH pairs have LoS and HOW FAR APART they are are two
 // different things: distance changes continuously as ships move (and
 // WaypointMobilityModel already interpolates each node's position smoothly
-// between the losGeneration.py's snapshots, for free), even though the go/no-go LoS
+// between the notebook's snapshots, for free), even though the go/no-go LoS
 // decision is only re-evaluated once per step.
 //
 // RefreshLoss() exploits that: instead of freezing each link's loss at the
@@ -427,23 +466,31 @@ RefreshLoss()
     const uint32_t step = std::min<uint32_t>(static_cast<uint32_t>(now / g_stepS),
                                              static_cast<uint32_t>(g_edges.size() - 1));
 
-    // "target" = the set of pairs the notebook says should have LoS right now
-    // (i.e. during this step), regardless of how far apart they currently are.
-    std::set<std::pair<uint32_t, uint32_t>> target;
+    // "target" = the set of (i, j, band) triples the notebook says should
+    // have LoS right now, regardless of how far apart they currently are.
+    // The band comes straight from links.csv (Edge::isKu), not from whether
+    // the pair touches the UAV, since a ship-UAV pair can be a target on
+    // both bands at once (two independent Edge rows for the same i, j).
+    std::set<LinkKey> target;
     for (const auto& e : g_edges[step])
     {
-        const bool isKu = (e.i == uav || e.j == uav);
-        if (isKu && !g_useUav)
+        const bool touchesUav = (e.i == uav || e.j == uav);
+        if (touchesUav && !g_useUav)
         {
-            continue; // ships-only baseline: the UAV is never a valid target
+            continue; // ships-only baseline: the UAV is never a valid target on either band
         }
-        target.insert({std::min(e.i, e.j), std::max(e.i, e.j)});
+        target.insert({std::min(e.i, e.j), std::max(e.i, e.j), e.isKu});
     }
 
-    // We need to touch every pair that should be on now, AND every pair that
-    // was on a moment ago (so a just-removed link gets its fade-out tick
-    // instead of vanishing silently).
-    std::set<std::pair<uint32_t, uint32_t>> touch = target;
+    // Touch every (pair, band) that should be on now, PLUS every one that
+    // was on a moment ago (so a just-removed link gets caught and its
+    // fade-out kicked off), PLUS every one still mid-fade per transitionT
+    // (so a fade-out keeps getting revisited after g_linkOn has already
+    // flipped to false, all the way to its terminal g_noLinkDb value - one
+    // extra g_refreshS of grace beyond g_rampS guards against a fade
+    // otherwise freezing one tick short of "fully off" on a boundary where
+    // tSince lands exactly on g_rampS).
+    std::set<LinkKey> touch = target;
     for (const auto& kv : g_linkOn)
     {
         if (kv.second)
@@ -451,25 +498,36 @@ RefreshLoss()
             touch.insert(kv.first);
         }
     }
-
-    uint32_t nOn = 0;
-    for (const auto& pr : touch)
+    for (const auto& kv : g_transitionT)
     {
-        const uint32_t i = pr.first;
-        const uint32_t j = pr.second;
-        const bool isKu = (i == uav || j == uav);
-        const bool shouldBeOn = target.count(pr) > 0;
-        const bool wasOn = g_linkOn.count(pr) ? g_linkOn[pr] : false;
+        if (now - kv.second < g_rampS + g_refreshS)
+        {
+            touch.insert(kv.first);
+        }
+    }
+
+    uint32_t nOnL = 0;
+    uint32_t nOnKu = 0;
+    for (const auto& key : touch)
+    {
+        const uint32_t i = std::get<0>(key);
+        const uint32_t j = std::get<1>(key);
+        const bool isKu = std::get<2>(key);
+        const bool shouldBeOn = target.count(key) > 0;
+        const bool wasOn = g_linkOn.count(key) ? g_linkOn[key] : false;
 
         if (shouldBeOn != wasOn)
         {
-            g_transitionT[pr] = now; // (re)start the fade from this moment
-            g_linkOn[pr] = shouldBeOn;
+            g_transitionT[key] = now; // (re)start the fade from this moment
+            g_linkOn[key] = shouldBeOn;
         }
 
         // Live geometry, not the snapshot distance from links.csv: both
         // endpoints' positions are continuously interpolated by
         // WaypointMobilityModel, so this tracks real motion within a step.
+        // Note i/j are the SAME physical nodes regardless of band (e.g. ship
+        // 2 and the UAV), so their live positions are identical for the L
+        // and Ku evaluations of the same pair - only the frequency differs.
         auto mi = g_nodes.Get(i)->GetObject<MobilityModel>();
         auto mj = g_nodes.Get(j)->GetObject<MobilityModel>();
         const Vector pi = mi->GetPosition();
@@ -480,7 +538,7 @@ RefreshLoss()
         const double freq = isKu ? g_freqKuGhz : g_freqLGhz;
         const double physicalLoss = TwoRaySeaLoss(dist, pi.z, pj.z, freq, g_seaState, g_polV);
 
-        const double tSince = now - (g_transitionT.count(pr) ? g_transitionT.at(pr) : -1e9);
+        const double tSince = now - (g_transitionT.count(key) ? g_transitionT.at(key) : -1e9);
         double loss;
         if (tSince < g_rampS)
         {
@@ -497,16 +555,21 @@ RefreshLoss()
             loss = shouldBeOn ? physicalLoss : g_noLinkDb;
         }
 
+        // isKu picks which channel's loss matrix this (i, j) pair's link
+        // lives on - the L-band and Ku-band matrices are entirely separate
+        // MatrixPropagationLossModel objects, so setting one never touches
+        // the other, even for the same node pair.
         auto& lossModel = isKu ? g_lossKu : g_lossL;
         lossModel->SetLoss(mi, mj, loss, true);
         if (shouldBeOn)
         {
-            ++nOn;
+            (isKu ? nOnKu : nOnL)++;
         }
     }
 
     NS_LOG_UNCOND("t=" << now << "s  step " << step << ": " << touch.size()
-                       << " links tracked, " << nOn << " currently in the losGeneration.py's LoS graph");
+                       << " (pair,band) links tracked, " << nOnL << " L-band + " << nOnKu
+                       << " Ku-band currently in the notebook's LoS graph");
 
     // Keep ticking until just before the run ends; no point scheduling a tick
     // that will never fire before Simulator::Stop().
@@ -516,6 +579,67 @@ RefreshLoss()
     }
 }
 
+// ===========================================================================
+// TRAFFIC MODEL: TELEMETRY (broadcast, L-band) + DATA TRANSFER (unicast, Ku-band)
+// ===========================================================================
+// Neither of these uses OnOffHelper. Data transfer is a plain unicast UDP
+// socket, which OnOffHelper could do too, but bursty periodic sends aren't
+// its shape (it models a continuous on/off duty cycle, not "N packets every
+// few minutes"). Telemetry is genuine IP broadcast, which OnOffHelper's
+// socket cannot do at all: ns-3's UdpSocket defaults to REFUSING sends to a
+// broadcast address (Socket::SetAllowBroadcast defaults false) and
+// OnOffHelper exposes no attribute to flip that - so real broadcast needs a
+// socket we create and configure ourselves, the same pattern ns-3's own
+// examples/routing/manet-routing-compare.cc uses for MANET broadcast
+// traffic. Both senders below are simple self-rescheduling functions rather
+// than full ns3::Application subclasses, since neither needs Application's
+// Start/Stop lifecycle beyond what a single initial Simulator::Schedule call
+// already gives us.
+
+// Sends one telemetry packet on the given (already broadcast-enabled,
+// already Connect()-ed to the L-band broadcast address) socket, then
+// reschedules itself. Runs for the lifetime of the simulation once started -
+// there's no explicit stop, mirroring the always-on telemetry beacon this is
+// meant to represent.
+static void
+PeriodicTelemetry(Ptr<Socket> socket, uint32_t sender, uint32_t bytes, Time period)
+{
+    Ptr<Packet> packet = Create<Packet>(bytes);
+    TelemetrySenderTag tag;
+    tag.SetSender(sender);
+    packet->AddPacketTag(tag);
+    socket->Send(packet);
+    g_tx[Bucket()]++; // no OnOffApplication Tx trace to hook here, so count directly
+    Simulator::Schedule(period, &PeriodicTelemetry, socket, sender, bytes, period);
+}
+
+static void
+SendOnePacket(Ptr<Socket> socket, uint32_t pktSize)
+{
+    socket->Send(Create<Packet>(pktSize));
+}
+
+// Fires off burstPkts back-to-back sends (spaced by gap) on the given
+// (already Connect()-ed, unicast) socket - one ship's "data transfer" burst.
+static void
+StartDataBurst(Ptr<Socket> socket, uint32_t pktSize, uint32_t burstPkts, Time gap)
+{
+    for (uint32_t k = 0; k < burstPkts; ++k)
+    {
+        Simulator::Schedule(gap * k, &SendOnePacket, socket, pktSize);
+    }
+}
+
+// Kicks off one burst immediately, then reschedules itself after `period` -
+// i.e. "burstPkts packets, every `period`", forever once started.
+static void
+PeriodicDataTransfer(Ptr<Socket> socket, uint32_t pktSize, uint32_t burstPkts, Time gap,
+                     Time period)
+{
+    StartDataBurst(socket, pktSize, burstPkts, gap);
+    Simulator::Schedule(period, &PeriodicDataTransfer, socket, pktSize, burstPkts, gap, period);
+}
+
 int
 main(int argc, char* argv[])
 {
@@ -523,24 +647,40 @@ main(int argc, char* argv[])
     std::string dir = "ns3_export";
     std::string out = "result";
     std::string routing = "olsr"; // olsr | aodv
-    std::string flowSpec = "all"; // "all" (every ship pair) or "0:4,1:3,..."
     std::string modeL = "OfdmRate6Mbps";
     std::string modeKu = "OfdmRate6Mbps";
-    std::string rate = "100kbps";
-    uint32_t pktSize = 512;
     double warmup = 30.0;
     double simTime = 0.0; // 0 -> derived from the CSV (nSteps * stepS)
     uint32_t run = 1;
     bool useUav = true;
+
+    // ---- fixed traffic model (per the scenario spec) ----------------------
+    // Telemetry: every ship broadcasts a small status packet, on L-band, to
+    // everyone (all other ships AND the UAV, since the UAV is now on the
+    // L-band subnet too), every telemetryPeriodS seconds.
+    double telemetryPeriodS = 5.0;
+    uint32_t telemetryBytes = 128; // small status message: position/heading/speed/id/time, say
+
+    // Data transfer: every ship sends a burst of "bulk" data to the UAV, on
+    // Ku-band, every dataPeriodMin minutes. Sizes/rates are not specified in
+    // the brief, so these are placeholders - override via the matching flags.
+    double dataPeriodMin = 6.0;
+    uint32_t dataBytes = 500000;  // 500 KB per transfer (placeholder bulk size)
+    uint32_t dataPktSize = 1024;
+    double dataPktGapMs = 5.0; // spacing between packets within one burst
     bool printRoutes = false;
     bool rtscts = false;
 
     // ---- radio parameters (tx power values given in the scenario brief; the
-    // rest - antenna gains, noise figure - are PLACEHOLDERS. Set them to your
-    // actual hardware figures via the matching --flag before trusting results.)
+    // rest - antenna gains, noise figure, and the UAV's L-band tx power
+    // (never specified - assumed equal to the ships') - are PLACEHOLDERS. Set
+    // them to your actual hardware figures via the matching --flag before
+    // trusting results.)
     double txLW = 30.0;       // L-band ship radio power (W)
+    double txLUavW = 30.0;    // L-band UAV radio power (W) - ASSUMED equal to ships'; not specified
     double txKuW = 50.0;      // Ku-band radio power, ships and UAV (W)
-    double gainL = 3.0;       // L-band antenna gain, dBi (assumed)
+    double gainL = 3.0;       // L-band ship antenna gain, dBi (assumed)
+    double gainLUav = 3.0;    // L-band UAV antenna gain, dBi (assumed equal to a ship's)
     double gainKuShip = 30.0; // Ku ship antenna gain, dBi (assumed)
     double gainKuUav = 25.0;  // Ku UAV antenna gain, dBi (assumed)
     double noiseFigure = 7.0; // receiver noise figure, dB (ns-3 default)
@@ -549,17 +689,25 @@ main(int argc, char* argv[])
     cmd.AddValue("dir", "Folder with nodes.csv and links.csv", dir);
     cmd.AddValue("out", "Prefix for result files", out);
     cmd.AddValue("routing", "olsr | aodv", routing);
-    cmd.AddValue("flows", "'all' or comma list of src:dst", flowSpec);
-    cmd.AddValue("useUav", "1 = keep UAV links, 0 = ships-only baseline", useUav);
-    cmd.AddValue("rate", "Per-flow CBR rate", rate);
-    cmd.AddValue("pktSize", "Packet size (bytes)", pktSize);
+    cmd.AddValue("useUav", "1 = keep UAV links (both bands), 0 = ships-only baseline", useUav);
+    cmd.AddValue("telemetryPeriodS", "Seconds between each ship's telemetry broadcast",
+                telemetryPeriodS);
+    cmd.AddValue("telemetryBytes", "Telemetry packet size (bytes)", telemetryBytes);
+    cmd.AddValue("dataPeriodMin", "Minutes between each ship's data-transfer burst to the UAV",
+                dataPeriodMin);
+    cmd.AddValue("dataBytes", "Bytes transferred per ship->UAV burst", dataBytes);
+    cmd.AddValue("dataPktSize", "Packet size within a data-transfer burst (bytes)", dataPktSize);
+    cmd.AddValue("dataPktGapMs", "Spacing between packets within one data-transfer burst (ms)",
+                dataPktGapMs);
     cmd.AddValue("modeL", "Fixed 802.11a data rate on L-band", modeL);
     cmd.AddValue("modeKu", "Fixed 802.11a data rate on Ku-band", modeKu);
     cmd.AddValue("freqL", "L-band centre frequency (GHz)", g_freqLGhz);
     cmd.AddValue("freqKu", "Ku-band centre frequency (GHz)", g_freqKuGhz);
-    cmd.AddValue("txL", "L-band transmit power (W)", txLW);
+    cmd.AddValue("txL", "L-band ship transmit power (W)", txLW);
+    cmd.AddValue("txLUav", "L-band UAV transmit power (W)", txLUavW);
     cmd.AddValue("txKu", "Ku-band transmit power (W)", txKuW);
-    cmd.AddValue("gainL", "L-band antenna gain (dBi)", gainL);
+    cmd.AddValue("gainL", "L-band ship antenna gain (dBi)", gainL);
+    cmd.AddValue("gainLUav", "L-band UAV antenna gain (dBi)", gainLUav);
     cmd.AddValue("gainKuShip", "Ku-band ship antenna gain (dBi)", gainKuShip);
     cmd.AddValue("gainKuUav", "Ku-band UAV antenna gain (dBi)", gainKuUav);
     cmd.AddValue("nf", "Receiver noise figure (dB)", noiseFigure);
@@ -578,12 +726,12 @@ main(int argc, char* argv[])
     cmd.AddValue("rtscts", "Enable RTS/CTS on all radios (hidden-terminal test)", rtscts);
     cmd.AddValue("refreshS",
                 "Seconds between continuous path-loss recomputes from live position "
-                "(smaller = smoother SNR tracking, more scheduler events; the losGeneration.py's "
+                "(smaller = smoother SNR tracking, more scheduler events; the notebook's "
                 "5-min LoS graph is unaffected either way)",
                 g_refreshS);
     cmd.AddValue("rampS",
                 "Seconds over which a link fades in/out (in dB) when it appears/disappears "
-                "in the losGeneration.py's LoS graph, instead of switching instantly",
+                "in the notebook's LoS graph, instead of switching instantly",
                 g_rampS);
     cmd.AddValue("run", "RNG run number", run);
     cmd.Parse(argc, argv);
@@ -596,6 +744,7 @@ main(int argc, char* argv[])
     }
 
     const double txLDbm = WattsToDbm(txLW);
+    const double txLUavDbm = WattsToDbm(txLUavW);
     const double txKuDbm = WattsToDbm(txKuW);
 
     // ---------------------------------------------------------------- load CSVs
@@ -646,10 +795,12 @@ main(int argc, char* argv[])
         }
     }
 
-    // links.csv: one row per (step, i, j, distance) for each LoS edge the
-    // notebook found clear. Antenna heights (h1, h2) aren't in this file, so
-    // they're filled in here from the nodes.csv positions just loaded, using
-    // each endpoint's z-coordinate at the same step.
+    // links.csv: one row per (step, i, j, band, distance) for each LoS edge
+    // the notebook found clear at that band. Antenna heights (h1, h2) aren't
+    // in this file, so they're filled in here from the nodes.csv positions
+    // just loaded, using each endpoint's z-coordinate at the same step. A
+    // ship-UAV pair can appear as two separate rows in the same step (one L,
+    // one Ku) if both bands are clear simultaneously.
     g_edges.assign(nSteps, {});
     {
         std::ifstream f(dir + "/links.csv");
@@ -659,17 +810,18 @@ main(int argc, char* argv[])
         while (std::getline(f, line))
         {
             auto c = Split(line, ',');
-            if (c.size() < 5)
+            if (c.size() < 6)
             {
                 continue;
             }
             const uint32_t s = std::stoul(c[0]);
             const uint32_t ni = std::stoul(c[2]);
             const uint32_t nj = std::stoul(c[3]);
-            const double dist = std::stod(c[4]);
+            const bool isKu = (c[4] == "Ku" || c[4] == "ku" || c[4] == "KU");
+            const double dist = std::stod(c[5]);
             const double h1 = (ni < nNodes && s < nSteps) ? pos[ni][s].z : 0.0;
             const double h2 = (nj < nNodes && s < nSteps) ? pos[nj][s].z : 0.0;
-            g_edges[s].push_back({ni, nj, dist, h1, h2});
+            g_edges[s].push_back({ni, nj, isKu, dist, h1, h2});
         }
     }
     const uint32_t nShips = nNodes - 1; // UAV is the last node
@@ -679,6 +831,7 @@ main(int argc, char* argv[])
     }
     g_tx.assign(nSteps, 0);
     g_rx.assign(nSteps, 0);
+    g_telemetryRx.assign(nShips, std::vector<uint64_t>(nSteps, 0));
     NS_LOG_UNCOND("Loaded " << nShips << " ships + 1 UAV, " << nSteps << " steps, simTime="
                             << simTime << "s, UAV links " << (g_useUav ? "ON" : "OFF")
                             << ", sea state " << g_seaState << ", "
@@ -704,19 +857,34 @@ main(int argc, char* argv[])
         {
             for (const auto& e : g_edges[k])
             {
-                const bool isKu = (e.i == nNodes - 1 || e.j == nNodes - 1);
-                if (isKu && !g_useUav)
+                const bool touchesUav = (e.i == nNodes - 1 || e.j == nNodes - 1);
+                if (touchesUav && !g_useUav)
                 {
                     continue;
                 }
-                const double f = isKu ? g_freqKuGhz : g_freqLGhz;
+                const double f = e.isKu ? g_freqKuGhz : g_freqLGhz;
                 const double fsplDb = Fspl(e.dist, f);
                 const double twoRayDb = TwoRaySeaLoss(e.dist, e.h1, e.h2, f, g_seaState, g_polV);
-                const double rx = isKu ? (txKuDbm + gainKuShip + gainKuUav - twoRayDb)
-                                       : (txLDbm + 2.0 * gainL - twoRayDb);
+                // Per-endpoint antenna gain: the UAV has its own gain figure
+                // on each band (may differ from a ship's), so look each side
+                // up individually rather than assuming "one end is always a
+                // ship" - which no longer holds for L-band ship-UAV links.
+                auto gainOf = [&](uint32_t node) {
+                    const bool isUav = (node == nNodes - 1);
+                    if (e.isKu)
+                    {
+                        return isUav ? gainKuUav : gainKuShip;
+                    }
+                    return isUav ? gainLUav : gainL;
+                };
+                // Link budget assumes symmetric tx power on a band (fine by
+                // default since txLUav == txL); if you set them differently,
+                // this reports the ship-side tx power for L-band links.
+                const double txDbm = e.isKu ? txKuDbm : txLDbm;
+                const double rx = txDbm + gainOf(e.i) + gainOf(e.j) - twoRayDb;
                 const double snr = rx - noiseDbm;
-                (isKu ? minSnrKu : minSnrL) = std::min(isKu ? minSnrKu : minSnrL, snr);
-                lb << k << "," << e.i << "," << e.j << "," << (isKu ? "Ku" : "L") << ","
+                (e.isKu ? minSnrKu : minSnrL) = std::min(e.isKu ? minSnrKu : minSnrL, snr);
+                lb << k << "," << e.i << "," << e.j << "," << (e.isKu ? "Ku" : "L") << ","
                    << std::fixed << std::setprecision(2) << e.dist / 1000.0 << "," << e.h1 << ","
                    << e.h2 << "," << fsplDb << "," << twoRayDb << "," << rx << "," << snr << "\n";
             }
@@ -804,20 +972,23 @@ main(int argc, char* argv[])
     Ptr<YansWifiChannel> chL = makeChannel(g_lossL);
     Ptr<YansWifiChannel> chKu = makeChannel(g_lossKu);
 
-    YansWifiPhyHelper phyL;
+    YansWifiPhyHelper phyLShip;
+    YansWifiPhyHelper phyLUav;   // UAV's L PHY: its own tx power/gain (gainLUav, txLUavW)
     YansWifiPhyHelper phyKuShip;
-    YansWifiPhyHelper phyKuUav; // UAV's Ku PHY has its own antenna gain (gainKuUav != gainKuShip)
-    setPhy(phyL, chL, txLDbm, gainL);
+    YansWifiPhyHelper phyKuUav;  // UAV's Ku PHY has its own antenna gain (gainKuUav != gainKuShip)
+    setPhy(phyLShip, chL, txLDbm, gainL);
+    setPhy(phyLUav, chL, txLUavDbm, gainLUav);
     setPhy(phyKuShip, chKu, txKuDbm, gainKuShip);
     setPhy(phyKuUav, chKu, txKuDbm, gainKuUav);
 
     WifiMacHelper mac;
     mac.SetType("ns3::AdhocWifiMac"); // no AP - every radio is a peer
 
-    // Install L first so it becomes interface 1 (OLSR/AODV's "main address")
-    // on ships; devKu is installed on ships and then the UAV, in that order,
-    // so its indices line up with ships followed by the UAV throughout.
-    NetDeviceContainer devL = makeWifi(modeL).Install(phyL, mac, ships);
+    // Both bands are now installed on ships, then the UAV, in that order, so
+    // their device/interface indices line up with ships followed by the UAV
+    // throughout (index nShips is always the UAV, on either container).
+    NetDeviceContainer devL = makeWifi(modeL).Install(phyLShip, mac, ships);
+    devL.Add(makeWifi(modeL).Install(phyLUav, mac, uavNode));
     NetDeviceContainer devKu = makeWifi(modeKu).Install(phyKuShip, mac, ships);
     devKu.Add(makeWifi(modeKu).Install(phyKuUav, mac, uavNode));
 
@@ -835,63 +1006,93 @@ main(int argc, char* argv[])
     }
     internet.Install(g_nodes);
     Ipv4AddressHelper addr;
-    addr.SetBase("10.1.1.0", "255.255.255.0"); // L-band subnet: ships only
+    addr.SetBase("10.1.1.0", "255.255.255.0"); // L-band subnet: ships AND the UAV now
     Ipv4InterfaceContainer ifL = addr.Assign(devL);
     addr.SetBase("10.1.2.0", "255.255.255.0"); // Ku-band subnet: ships then UAV
     Ipv4InterfaceContainer ifKu = addr.Assign(devKu);
     // Both subnets are 10.1.x.NODE+1, so (last octet - 1) recovers the node
-    // index from either address; used below when labelling FlowMonitor flows.
+    // index from either address. On both containers the UAV is index nShips
+    // (last), since both were installed ships-then-UAV.
 
     // ------------------------------------------------------------------ traffic
-    const uint16_t port = 9000;
-    std::vector<std::pair<uint32_t, uint32_t>> flows;
-    if (flowSpec == "all")
-    {
-        // Default: one flow per unordered ship pair (a full mesh of traffic
-        // demands). The UAV never originates or sinks traffic - it only relays.
-        for (uint32_t i = 0; i < nShips; ++i)
-        {
-            for (uint32_t j = i + 1; j < nShips; ++j)
-            {
-                flows.emplace_back(i, j);
-            }
-        }
-    }
-    else
-    {
-        for (const auto& tok : Split(flowSpec, ','))
-        {
-            auto sd = Split(tok, ':');
-            NS_ABORT_MSG_IF(sd.size() != 2, "bad flow spec: " << tok);
-            flows.emplace_back(std::stoul(sd[0]), std::stoul(sd[1]));
-        }
-    }
+    const uint16_t telemetryPort = 9001;
+    const uint16_t dataPort = 9002;
 
-    // Every ship runs a UDP sink so it can receive any flow addressed to it.
-    for (uint32_t s = 0; s < nShips; ++s)
+    // --- Telemetry sinks: every node (ships AND the UAV, now that the UAV is
+    // on the L-band subnet) listens for broadcast telemetry. A UDP socket
+    // bound to (Any, port) receives both unicast and broadcast packets
+    // addressed to that port, so no special receive-side flag is needed -
+    // only the SENDER needs SetAllowBroadcast(true) (see below).
+    for (uint32_t n = 0; n < nNodes; ++n)
     {
         PacketSinkHelper sink("ns3::UdpSocketFactory",
-                              InetSocketAddress(Ipv4Address::GetAny(), port));
-        auto app = sink.Install(g_nodes.Get(s));
-        app.Get(0)->TraceConnectWithoutContext("Rx", MakeCallback(&OnRx));
+                              InetSocketAddress(Ipv4Address::GetAny(), telemetryPort));
+        auto app = sink.Install(g_nodes.Get(n));
+        app.Get(0)->TraceConnectWithoutContext("Rx", MakeCallback(&OnTelemetryRx));
         app.Start(Seconds(0.0));
     }
-    // Each flow is a constant-bit-rate UDP stream. It's addressed to the
-    // destination's L-band interface address; OLSR/AODV then routes to it
-    // over whichever band(s) currently connect the two ships (possibly via
-    // the UAV's Ku hop, possibly multi-hop over L-band, possibly both).
-    for (const auto& fl : flows)
+    // --- Telemetry senders: one raw socket per ship, connected to the
+    // limited broadcast address (255.255.255.255) and explicitly bound to
+    // the ship's L-band NetDevice. Both of these matter because each ship
+    // now has TWO devices (L and Ku): without BindToNetDevice, a broadcast
+    // send has no unambiguous egress interface to resolve to and can be
+    // silently dropped at the IP layer before it ever reaches the radio -
+    // and subnet-directed broadcast (10.1.1.255) isn't guaranteed to be
+    // locally delivered the way the limited broadcast address always is.
+    // This mirrors the pattern ns-3's own examples/routing/manet-routing-
+    // compare.cc uses for MANET broadcast traffic.
+    for (uint32_t s = 0; s < nShips; ++s)
     {
-        OnOffHelper onoff("ns3::UdpSocketFactory",
-                          InetSocketAddress(ifL.GetAddress(fl.second), port));
-        onoff.SetAttribute("OnTime", StringValue("ns3::ConstantRandomVariable[Constant=1]"));
-        onoff.SetAttribute("OffTime", StringValue("ns3::ConstantRandomVariable[Constant=0]"));
-        onoff.SetAttribute("DataRate", DataRateValue(DataRate(rate)));
-        onoff.SetAttribute("PacketSize", UintegerValue(pktSize));
-        auto app = onoff.Install(g_nodes.Get(fl.first));
-        app.Get(0)->TraceConnectWithoutContext("Tx", MakeCallback(&OnTx));
-        app.Start(Seconds(warmup));        // give routing time to converge first
-        app.Stop(Seconds(simTime - 1.0));  // stop just before the sim ends
+        // Spread each ship's first beacon evenly across one telemetry period
+        // so all ships do not contend at the same simulation instant.
+        const double telemetryPhaseS = telemetryPeriodS * double(s) / nShips;
+        Ptr<Socket> sock = Socket::CreateSocket(g_nodes.Get(s), UdpSocketFactory::GetTypeId());
+        sock->BindToNetDevice(devL.Get(s));
+        sock->SetAllowBroadcast(true);
+        sock->Connect(InetSocketAddress(Ipv4Address::GetBroadcast(), telemetryPort));
+        Simulator::Schedule(Seconds(warmup + telemetryPhaseS), &PeriodicTelemetry, sock, s,
+                    telemetryBytes, Seconds(telemetryPeriodS));
+    }
+
+    // --- Data-transfer sink: only the UAV needs to receive these (that's
+    // the whole point of the flow), on its Ku-band address. Its stats are
+    // read from FlowMonitor below rather than a manual per-step counter,
+    // since (unlike broadcast telemetry) it's a clean single-destination
+    // unicast flow that FlowMonitor already classifies cleanly per ship.
+    {
+        PacketSinkHelper sink("ns3::UdpSocketFactory",
+                              InetSocketAddress(Ipv4Address::GetAny(), dataPort));
+        auto app = sink.Install(uavNode);
+        app.Start(Seconds(0.0));
+    }
+    // --- Data-transfer senders: one unicast socket per ship, connected to
+    // the UAV's Ku-band address. A plain UdpSocket needs no special flag for
+    // unicast, unlike the broadcast telemetry sockets above.
+    //
+    // IMPORTANT: this is addressed to the UAV's KU address, but OLSR/AODV
+    // will happily route it over L-band instead if the direct Ku link is
+    // down and an L-band path (now that the UAV has an L radio too) is up -
+    // the routing protocol has no notion of "this traffic is meant to stay
+    // on the high-rate band". So a "data transfer" flow can, in periods when
+    // Ku is out, end up crossing the lower-capacity L-band channel instead.
+    // That's a real, expected consequence of adding UAV L-band connectivity,
+    // not a bug - but it means "Ku-band data transfer" numbers can include
+    // some packets that didn't actually travel over Ku. *_datatransfer.csv doesn't
+    // currently break that out; if it matters for your analysis, cross-check
+    // against *_routes.txt (--printRoutes=1) for the periods in question.
+    const Ipv4Address uavKuAddr = ifKu.GetAddress(nShips);
+    const uint32_t burstPkts = std::max<uint32_t>(1, dataBytes / dataPktSize);
+    for (uint32_t s = 0; s < nShips; ++s)
+    {
+        // Use a separate deterministic phase for each ship's bulk-transfer
+        // burst, avoiding synchronized Ku-band bursts as well.
+        const double dataPhaseMin = dataPeriodMin * double(s) / nShips;
+        Ptr<Socket> sock = Socket::CreateSocket(g_nodes.Get(s), UdpSocketFactory::GetTypeId());
+        sock->Connect(InetSocketAddress(uavKuAddr, dataPort));
+        Simulator::Schedule(Minutes(warmup / 60.0 + dataPhaseMin), &PeriodicDataTransfer,
+                            sock, dataPktSize, burstPkts,
+                            MilliSeconds(static_cast<int64_t>(dataPktGapMs)),
+                            Minutes(dataPeriodMin));
     }
 
     // --------------------------------------------------- topology schedule
@@ -931,13 +1132,56 @@ main(int argc, char* argv[])
     mon->CheckForLostPackets();
     auto cls = DynamicCast<Ipv4FlowClassifier>(fmh.GetClassifier());
 
-    // FlowMonitor identifies flows by (src addr, dst addr, ports, protocol).
-    // Because a logical ship-to-ship flow can be routed over either band, its
-    // *source* address can change (L-band vs Ku-band interface) if the route
-    // changes mid-run - FlowMonitor then reports that as a second, separate
-    // flow. Agg merges everything back down to one row per logical
-    // (ship, ship) pair regardless of which interface carried it.
-    struct Agg
+    // Expected ("offered") counts, computed from the traffic *settings*
+    // rather than from what actually got sent - so a packet that never even
+    // made it onto the wire (e.g. socket-level failure) still counts as
+    // offered-but-lost rather than silently vanishing from PDR.
+    const double avail = std::max(0.0, simTime - warmup);
+    const auto telemetryOfferedFor = [&](uint32_t ship) {
+        const double phase = telemetryPeriodS * double(ship) / nShips;
+        return phase < avail
+                   ? static_cast<uint64_t>(std::floor((avail - phase) / telemetryPeriodS)) + 1
+                   : uint64_t{0};
+    };
+    const uint64_t dataBurstCount =
+        static_cast<uint64_t>(std::floor(avail / (dataPeriodMin * 60.0))) + 1;
+    const uint64_t dataOfferedPkts = dataBurstCount * burstPkts;
+
+    // --- TELEMETRY (broadcast, L-band) --------------------------------------
+    // Do not use FlowMonitor for broadcast reception totals: its broadcast
+    // flow accounting is not a reliable "one receive per listening node"
+    // counter. The sink Rx trace counts each actual reception, and the packet
+    // tag lets us retain the originating ship for the per-ship report.
+    const uint32_t possibleReceivers = nNodes - 1; // everyone except the sender itself
+    std::ofstream tf(out + "_telemetry.csv");
+    tf << "ship,offered_broadcasts,sent_broadcasts,rx_receptions,possible_receptions,pdr,"
+          "mean_delay_ms\n";
+    uint64_t telTotRx = 0;
+    uint64_t telTotPossible = 0;
+    for (uint32_t s = 0; s < nShips; ++s)
+    {
+        const uint64_t telemetryCount = telemetryOfferedFor(s);
+        uint64_t receptions = 0;
+        for (uint32_t k = 0; k < nSteps; ++k)
+        {
+            receptions += g_telemetryRx[s][k];
+        }
+        const uint64_t possible = telemetryCount * possibleReceivers;
+        const double pdr = possible ? double(receptions) / possible : 0.0;
+        tf << s << "," << telemetryCount << "," << telemetryCount << "," << receptions << ","
+           << possible << "," << std::fixed << std::setprecision(4) << pdr << ",0\n";
+        telTotRx += receptions;
+        telTotPossible += possible;
+    }
+    tf.close();
+
+    // --- DATA TRANSFER (unicast, ship -> UAV, nominally Ku-band) -----------
+    // A clean single-destination unicast flow per ship (destination is
+    // always the UAV), so unlike telemetry this can be aggregated the
+    // straightforward way: one flow per ship, no broadcast fan-out.
+    // g_edges/g_useUav still gate whether a Ku (or, per the caveat above the
+    // sender loop, sometimes L) path to the UAV exists at all.
+    struct DataAgg
     {
         uint64_t tx = 0;
         uint64_t rx = 0;
@@ -945,120 +1189,89 @@ main(int argc, char* argv[])
         uint64_t fwd = 0;
         double delay = 0.0;
     };
-    std::map<std::pair<int, int>, Agg> agg;
+    std::map<int, DataAgg> dataAgg;
     for (const auto& kv : mon->GetFlowStats())
     {
         auto t = cls->FindFlow(kv.first);
-        if (t.destinationPort != port)
+        if (t.destinationPort != dataPort)
         {
-            continue; // skip OLSR/AODV control traffic, which FlowMonitor also sees
+            continue;
         }
         const int src = (t.sourceAddress.Get() & 0xFF) - 1;
-        const int dst = (t.destinationAddress.Get() & 0xFF) - 1;
-        Agg& a = agg[{src, dst}];
+        DataAgg& a = dataAgg[src];
         a.tx += kv.second.txPackets;
         a.rx += kv.second.rxPackets;
         a.rxBytes += kv.second.rxBytes;
         a.fwd += kv.second.timesForwarded;
         a.delay += kv.second.delaySum.GetSeconds();
     }
-
-    // Offered load is computed from the traffic *settings* (rate, packet
-    // size, on/off window), NOT from what the apps or FlowMonitor actually
-    // observed. This matters: OnOffApplication only fires its Tx trace once
-    // the socket has accepted a packet, and FlowMonitor only sees packets
-    // that reached the IP layer - so a packet addressed to a destination
-    // with NO ROUTE AT ALL is invisible to both, and would silently vanish
-    // from a naive PDR calculation instead of counting as a loss. Comparing
-    // against this independently-computed offered load catches that case.
-    const double trafficStart = warmup;
-    const double trafficStop = simTime - 1.0;
-    const double pktRate = double(DataRate(rate).GetBitRate()) / (8.0 * pktSize);
-    auto offeredIn = [&](double t0, double t1) {
-        const double lo = std::max(t0, trafficStart);
-        const double hi = std::min(t1, trafficStop);
-        return hi > lo ? (hi - lo) * pktRate : 0.0;
-    };
-    const uint64_t offeredPerFlow = static_cast<uint64_t>(std::llround(offeredIn(0.0, simTime)));
-
-    // Per-flow results.
-    std::ofstream ff(out + "_flows.csv");
-    ff << "src,dst,offered_pkts,sent_pkts,noroute_pkts,rx_pkts,pdr,mean_delay_ms,mean_hops,"
+    std::ofstream df(out + "_datatransfer.csv");
+    df << "ship,offered_pkts,sent_pkts,noroute_pkts,rx_pkts,pdr,mean_delay_ms,mean_hops,"
           "throughput_kbps\n";
-    uint64_t totOff = 0;
-    uint64_t totSent = 0;
-    uint64_t totRx = 0;
-    double totDelay = 0.0;
-    double totFwd = 0.0;
-    for (const auto& fl : flows)
+    uint64_t dataTotOff = 0;
+    uint64_t dataTotRx = 0;
+    double dataTotDelay = 0.0;
+    double dataTotFwd = 0.0;
+    for (uint32_t s = 0; s < nShips; ++s)
     {
-        Agg a; // stays all-zero if FlowMonitor never saw this flow (no route, ever)
-        auto it = agg.find({static_cast<int>(fl.first), static_cast<int>(fl.second)});
-        if (it != agg.end())
-        {
-            a = it->second;
-        }
-        const uint64_t off = offeredPerFlow;
-        const uint64_t noRoute = off > a.tx ? off - a.tx : 0; // offered but never even sent
-        const double pdr = off ? double(a.rx) / off : 0.0;
+        const DataAgg& a =
+            dataAgg.count(static_cast<int>(s)) ? dataAgg[static_cast<int>(s)] : DataAgg{};
+        const uint64_t noRoute = dataOfferedPkts > a.tx ? dataOfferedPkts - a.tx : 0;
+        const double pdr = dataOfferedPkts ? double(a.rx) / dataOfferedPkts : 0.0;
         const double dms = a.rx ? a.delay * 1000.0 / a.rx : 0.0;
-        const double hops = a.rx ? 1.0 + double(a.fwd) / a.rx : 0.0; // approximate: 1 + forwards/rx
-        const double kbps = a.rxBytes * 8.0 / (simTime - warmup) / 1000.0;
-        ff << fl.first << "," << fl.second << "," << off << "," << a.tx << "," << noRoute << ","
-           << a.rx << "," << std::fixed << std::setprecision(4) << pdr << "," << dms << ","
-           << hops << "," << kbps << "\n";
-        totOff += off;
-        totSent += a.tx;
-        totRx += a.rx;
-        totDelay += a.delay;
-        totFwd += a.fwd;
+        const double hops = a.rx ? 1.0 + double(a.fwd) / a.rx : 0.0;
+        const double kbps = a.rxBytes * 8.0 / avail / 1000.0;
+        df << s << "," << dataOfferedPkts << "," << a.tx << "," << noRoute << "," << a.rx << ","
+           << std::fixed << std::setprecision(4) << pdr << "," << dms << "," << hops << ","
+           << kbps << "\n";
+        dataTotOff += dataOfferedPkts;
+        dataTotRx += a.rx;
+        dataTotDelay += a.delay;
+        dataTotFwd += a.fwd;
     }
-    ff.close();
+    df.close();
 
-    // Per-step results: how many L/Ku links were active, and offered vs.
-    // delivered packets, for each notebook step. This is the file to read
-    // when diagnosing *when* loss happens (e.g. concentrated right after a
-    // topology change, vs. spread evenly through a step).
+    // --- Per-step breakdown (telemetry only - see TelAgg's comment above for
+    // why data-transfer doesn't get the same manual-bucket treatment: its
+    // FlowMonitor aggregation above is already clean per-ship). Link counts
+    // now come from Edge::isKu directly instead of "touches the UAV".
     std::ofstream sf(out + "_steps.csv");
-    sf << "step,t_start_s,links_L,links_Ku,offered_pkts,sent_pkts,noroute_pkts,rx_pkts,pdr\n";
+    sf << "step,t_start_s,links_L,links_Ku,telemetry_tx_pkts,telemetry_rx_receptions,"
+          "telemetry_pdr\n";
     for (uint32_t k = 0; k < nSteps; ++k)
     {
         uint32_t nL = 0;
         uint32_t nKu = 0;
         for (const auto& e : g_edges[k])
         {
-            const bool isKu = (e.i == nNodes - 1 || e.j == nNodes - 1);
-            if (isKu)
+            const bool touchesUav = (e.i == nNodes - 1 || e.j == nNodes - 1);
+            if (touchesUav && !g_useUav)
             {
-                nKu += g_useUav ? 1 : 0;
+                continue;
             }
-            else
-            {
-                ++nL;
-            }
+            (e.isKu ? nKu : nL)++;
         }
-        const double t1 = (k + 1 < nSteps) ? stepTime[k + 1] : simTime;
-        const uint64_t off =
-            static_cast<uint64_t>(std::llround(flows.size() * offeredIn(stepTime[k], t1)));
-        const uint64_t noRoute = off > g_tx[k] ? off - g_tx[k] : 0;
-        sf << k << "," << stepTime[k] << "," << nL << "," << nKu << "," << off << "," << g_tx[k]
-           << "," << noRoute << "," << g_rx[k] << "," << std::fixed << std::setprecision(4)
-           << (off ? double(g_rx[k]) / off : 0.0) << "\n";
+        sf << k << "," << stepTime[k] << "," << nL << "," << nKu << "," << g_tx[k] << ","
+           << g_rx[k] << "," << std::fixed << std::setprecision(4)
+           << ((g_tx[k] != 0 && possibleReceivers != 0)
+               ? double(g_rx[k]) / (g_tx[k] * possibleReceivers)
+               : 0.0)
+           << "\n";
     }
     sf.close();
 
     std::cout << "\n===== SUMMARY (" << (g_useUav ? "with UAV" : "ships only") << ", " << routing
               << ", sea state " << g_seaState << ") =====\n"
-              << "PDR (rx / offered)      : " << (totOff ? 100.0 * totRx / totOff : 0.0) << " %\n"
-              << "Offered with no route   : "
-              << (totOff ? 100.0 * (totOff - std::min(totOff, totSent)) / totOff : 0.0) << " %\n"
-              << "PDR of routed packets   : " << (totSent ? 100.0 * totRx / totSent : 0.0)
-              << " %  (old metric; hides unreachable flows)\n"
-              << "Mean e2e delay          : " << (totRx ? 1000.0 * totDelay / totRx : 0.0)
-              << " ms (delivered pkts)\n"
-              << "Mean hop count          : " << (totRx ? 1.0 + totFwd / totRx : 0.0) << "\n"
-              << "Files                   : " << out << "_flows.csv, " << out << "_steps.csv, "
-              << out << "_linkbudget.csv\n";
+              << "Telemetry PDR (broadcast, L-band)   : "
+              << (telTotPossible ? 100.0 * telTotRx / telTotPossible : 0.0) << " %\n"
+              << "Data-transfer PDR (ship->UAV)       : "
+              << (dataTotOff ? 100.0 * dataTotRx / dataTotOff : 0.0) << " %\n"
+              << "Data-transfer mean e2e delay        : "
+              << (dataTotRx ? 1000.0 * dataTotDelay / dataTotRx : 0.0) << " ms\n"
+              << "Data-transfer mean hop count        : "
+              << (dataTotRx ? 1.0 + dataTotFwd / dataTotRx : 0.0) << "\n"
+              << "Files  : " << out << "_telemetry.csv, " << out << "_datatransfer.csv, " << out
+              << "_steps.csv, " << out << "_linkbudget.csv\n";
 
     Simulator::Destroy();
     return 0;

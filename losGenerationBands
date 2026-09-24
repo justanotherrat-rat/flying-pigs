@@ -19,7 +19,6 @@ import numpy as np
 
 # main loop---------------------------------------------------------------
 
-
 def main():
     sim_time = 60  # simulation time in minutes
     calc_interval = 5  # calculation interval in minutes
@@ -61,8 +60,6 @@ def main():
     ships_history_lla = []
     los_graph_history = []
     uav_traj_optns = {}  # key = time, value = UAV LLA coordinate
-    # ns-3 export snapshots: one entry per step, recorded at UAV-placement time
-    # (the same instant ships_lla/los_graph describe), NOT after ships move.
     snap_ships = []
     snap_uav = []
     snap_adj_l = []   # L-band graph per step (ship-ship AND ship-UAV L links)
@@ -98,17 +95,14 @@ def main():
             filename=f'network_t{curr_time:03d}.png',
         )
 
-        # record ships/UAV/graphs for ns-3 exactly as placement saw them,
-        # before the ships move and before curr_time advances. Both bands are
-        # recorded separately since the UAV now carries an L-band radio in
-        # addition to Ku, and a ship-UAV pair can have either, both, or
-        # neither band clear at once.
+        # record ships/UAV/graphs for ns-3 
+        # Both bands are recorded separately 
         snap_ships.append(ships_enu.copy())
         snap_uav.append(uav_info['uav_enu'].copy())
         snap_adj_l.append(uav_result['graph_l'].toarray())
         snap_adj_ku.append(uav_result['graph_ku'].toarray())
 
-        # also keep the ship-only history in step with the same instant
+        # also keep the ship-only history in the same instant
         ships_history_lla.append(np.copy(ships_lla))
         los_graph_history.append(los_graph.toarray().copy())
 
@@ -211,16 +205,12 @@ def get_elevation_profile(lat1, lon1, lat2, lon2, dem_dataset, num_points=50):
         # Query elevation from the DEM dataset
         try:
             # Read elevation values at lat,lon
-            # This requires a transform to convert lat/lon to pixel coordinates
-            # and then reading the pixel value.
-            # rasterio expects (x, y) = (lon, lat)
             row, col = dem_dataset.index(current_lon, current_lat)
             elevation = dem_dataset.read(1)[row, col]
             elevations_data.append({'elevation': float(elevation), 'location': {
                                    'lat': current_lat, 'lng': current_lon}})
         except Exception as e:
-            # Handle cases where the point is outside the DEM coverage or other
-            # errors
+            # Handle cases where the point is outside the DEM coverage or other errors
             print(
                 f"Warning: Could not get elevation for ({
                     current_lat:.4f}, {
@@ -341,8 +331,7 @@ def enu_to_lla(e, n, u, lat_ref_deg, lon_ref_deg, alt_ref_m):
 
 # fresnel helpers---------------------------------------------------------
 
-
-# ship<->ship links are L-band, ship<->UAV links are Ku-band.
+# ship<->ship, ship<->UAV links are L-band, ship<->UAV links are Ku-band.
 FREQ_L_GHZ = 1.5    # L-band centre frequency (ship-ship)
 FREQ_KU_GHZ = 16.0  # Ku-band centre frequency (ship-UAV)
 
