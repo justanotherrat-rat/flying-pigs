@@ -611,6 +611,7 @@ Bucket()
 // Trace callback: count telemetry packets received (any node, any sender),
 // bucketed by which notebook step was active when they arrived. Used for the
 // per-step breakdown in *_steps.csv.
+static void
 OnRx(Ptr<const Packet> p, const Address& from)
 {
     g_rx[Bucket()]++;
