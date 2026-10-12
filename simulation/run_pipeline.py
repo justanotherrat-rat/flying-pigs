@@ -110,6 +110,9 @@ def main():
     nb.add_argument("--calc-interval", type=float, default=5, help="minutes between steps")
     nb.add_argument("--n-ships", type=int, default=5)
     nb.add_argument("--placement-budget-s", type=float, default=10.0)
+    nb.add_argument("--uav-speed-kmh", type=float, default=130.0,
+                    help="UAV cruise speed between placements (default 130 km/h; "
+                         "typical range 100-160)")
     nb.add_argument("--dem-file", default=None, help="path to DEM GeoTIFF")
     nb.add_argument("--export-dir", default="ns3_export",
                     help="where nodes.csv/links.csv are written and read from")
@@ -169,6 +172,7 @@ def main():
             calc_interval=args.calc_interval,
             n_ships=args.n_ships,
             placement_budget_s=args.placement_budget_s,
+            uav_speed_kmh=args.uav_speed_kmh,
             dem_file_path=args.dem_file,
             export_dir=str(export_dir),
             plot_dir=args.plot_dir,

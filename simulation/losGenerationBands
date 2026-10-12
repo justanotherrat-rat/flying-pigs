@@ -21,7 +21,13 @@ import numpy as np
 
 def main(sim_time=60, calc_interval=5, n_ships=5,
          placement_budget_s=10.0, dem_file_path=None,
-         export_dir='ns3_export', plot_dir='plots', make_plots=True):
+         export_dir='ns3_export', plot_dir='plots', make_plots=True,
+         uav_speed_kmh=130.0):
+
+    if not np.isfinite(uav_speed_kmh) or uav_speed_kmh <= 0:
+        raise ValueError('uav_speed_kmh must be a positive finite number')
+    if not np.isfinite(calc_interval) or calc_interval <= 0:
+        raise ValueError('calc_interval must be a positive finite number')
 
     # load dem
     dem_dataset = load_dem(dem_file_path or 'output_hh.tif')
@@ -63,6 +69,7 @@ def main(sim_time=60, calc_interval=5, n_ships=5,
     snap_adj_l = []   # L-band graph per step (ship-ship AND ship-UAV L links)
     snap_adj_ku = []  # Ku-band graph per step (ship-UAV Ku links)
     curr_time = 0
+    previous_uav_enu = None
 
     while (curr_time < sim_time):
         # place one UAV for the current ship geometry
@@ -79,11 +86,15 @@ def main(sim_time=60, calc_interval=5, n_ships=5,
         try:
             uav_result = place_uavs(
                 ships_enu, dem_dataset, lat_ref_deg, lon_ref_deg,
-                time_budget_s=placement_budget_s
+                time_budget_s=placement_budget_s,
+                previous_uav_enu=previous_uav_enu,
+                travel_time_minutes=calc_interval,
+                uav_speed_kmh=uav_speed_kmh,
             )
         except TimeoutError:
             break
         uav_info = uav_result['uavs'][0]
+        previous_uav_enu = uav_info['uav_enu'].copy()
         uav_traj_optns[curr_time] = uav_info['uav_lla'].copy()
 
         # plot this snapshot: ship-ship LoS + the UAV + its links
@@ -685,10 +696,31 @@ def _midpoint_seed(ships_enu, altitude_m):
 
 def place_uavs(ships_enu, dem_dataset, lat_ref_deg, lon_ref_deg,
                min_alt_m=1500.0, max_alt_m=6100.0,
-               seed_alt_m=1500.0, maxiter=35, popsize=8,
-               random_state=7, time_budget_s=10.0):
+               maxiter=35, popsize=8,
+               random_state=7, time_budget_s=10.0,
+               previous_uav_enu=None, travel_time_minutes=None,
+               uav_speed_kmh=130.0):
     """Place one UAV, stopping at the deadline and returning the best candidate."""
     import time
+
+    if not np.isfinite(uav_speed_kmh) or uav_speed_kmh <= 0:
+        raise ValueError('uav_speed_kmh must be a positive finite number')
+    if previous_uav_enu is not None:
+        previous_uav_enu = np.asarray(previous_uav_enu, dtype=float)
+        if previous_uav_enu.shape != (3,):
+            raise ValueError('previous_uav_enu must have shape (3,)')
+        if (travel_time_minutes is None or
+                not np.isfinite(travel_time_minutes) or travel_time_minutes < 0):
+            raise ValueError(
+                'travel_time_minutes must be finite and non-negative when '
+                'previous_uav_enu is provided')
+        max_travel_distance_m = (
+            uav_speed_kmh * 1000.0 * travel_time_minutes / 60.0
+        )
+    else:
+        max_travel_distance_m = None
+
+    seed_alt_m = min_alt_m
 
     ships_enu = np.asarray(ships_enu, dtype=float)
     if ships_enu.ndim != 2 or ships_enu.shape[1] != 3:
@@ -707,7 +739,8 @@ def place_uavs(ships_enu, dem_dataset, lat_ref_deg, lon_ref_deg,
     ]
     deadline = time.perf_counter() + max(0.0, time_budget_s)
     best = {'score': np.inf, 'position': None, 'graph_l': None, 'graph_ku': None,
-            'graph': None, 'metrics': None}
+            'graph': None, 'metrics': None, 'travel_distance_m': None,
+            'travel_excess_m': 0.0}
 
     # objective function to be minimized for optimization
     def evaluate(position):
@@ -722,15 +755,34 @@ def place_uavs(ships_enu, dem_dataset, lat_ref_deg, lon_ref_deg,
         # LoS, so "the UAV is unreachable from ship i" should only be true
         # when BOTH bands are down to that ship.
         graph = graph_l.maximum(graph_ku)
-        metrics = _network_metrics(graph.toarray())
+        adjacency = graph.toarray()
+        metrics = _network_metrics(adjacency)
         missing_two_hop_pairs = metrics['total_pairs'] - \
             metrics['pairs_within_two_hops']
         distances = shortest_path(graph, directed=False, unweighted=True)
         pair_distances = distances[np.triu_indices(len(all_coords), k=1)]
         disconnected_pairs = np.count_nonzero(~np.isfinite(pair_distances))
+        travel_distance_m = None
+        travel_excess_m = 0.0
+        travel_penalty = 0.0
+        if previous_uav_enu is not None:
+            travel_distance_m = float(
+                np.linalg.norm(uav_enu[0] - previous_uav_enu)
+            )
+            travel_excess_m = max(
+                0.0, travel_distance_m - max_travel_distance_m
+            )
+            if travel_excess_m > 1e-6:
+                # Prefer any reachable placement; among unreachable candidates,
+                # favor the smallest travel shortfall.
+                travel_penalty = 1e9 + 1000.0 * travel_excess_m
+        # Keep connectivity as the priority; among equivalent networks, prefer
+        # shorter active UAV-to-ship links (the union graph counts each once).
+        uav_link_length_km = np.sum(adjacency[-1, :len(ships_enu)]) / 1000.0
         score = (100000.0 * disconnected_pairs +
-                 10000.0 * missing_two_hop_pairs -
-                 10.0 * metrics['direct_edges'])
+                 10000.0 * missing_two_hop_pairs +
+                 uav_link_length_km +
+                 travel_penalty)
         if score < best['score']:
             best.update(
                 score=score,
@@ -738,7 +790,9 @@ def place_uavs(ships_enu, dem_dataset, lat_ref_deg, lon_ref_deg,
                 graph_l=graph_l,
                 graph_ku=graph_ku,
                 graph=graph,
-                metrics=metrics)
+                metrics=metrics,
+                travel_distance_m=travel_distance_m,
+                travel_excess_m=travel_excess_m)
         return score
 
     midpoint_seed = _midpoint_seed(
@@ -794,6 +848,9 @@ def place_uavs(ships_enu, dem_dataset, lat_ref_deg, lon_ref_deg,
         'graph_l': graph_l,           # L-band-only graph (ship-ship + ship-UAV L links)
         'graph_ku': graph_ku,         # Ku-band-only graph (ship-UAV Ku links)
         'timed_out': time.perf_counter() >= deadline,
+        'travel_distance_m': best['travel_distance_m'],
+        'max_travel_distance_m': max_travel_distance_m,
+        'travel_feasible': best['travel_excess_m'] <= 1e-6,
     }
 
 # ship movement helpers---------------------------------------------------
