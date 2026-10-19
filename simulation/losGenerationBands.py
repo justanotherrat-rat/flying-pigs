@@ -15,7 +15,6 @@ import time
 from pathlib import Path
 import csv
 import os
-import numpy as np
 
 # main loop---------------------------------------------------------------
 
@@ -725,7 +724,7 @@ def place_uavs(ships_enu, dem_dataset, lat_ref_deg, lon_ref_deg,
     else:
         max_travel_distance_m = None
 
-    seed_alt_m = min_alt_m
+    seed_alt_m = min_alt_m + 0.5 * (max_alt_m - min_alt_m)
 
     ships_enu = np.asarray(ships_enu, dtype=float)
     if ships_enu.ndim != 2 or ships_enu.shape[1] != 3:

@@ -214,7 +214,7 @@ def main():
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 
-    ap.add_argument("--n", type=int, required=True, help="number of replications")
+    ap.add_argument("--n", type=int, default = 10, help="number of replications")
     ap.add_argument("--seed", type=int, default=None,
                     help="base seed; replication i uses Python seed (seed+i) and ns-3 "
                          "--run (seed+i). Omit for a fresh, non-reproducible seed each run "
@@ -248,7 +248,7 @@ def main():
                          "in losGenerationBands.py's docstring for why)")
 
     ns = ap.add_argument_group("ns-3 stage (same meaning as run_pipeline.py)")
-    ns.add_argument("--ns3-root", required=True)
+    ns.add_argument("--ns3-root", default = str(Path("~/ns-3-dev").expanduser().resolve()))
     ns.add_argument("--cc-file", default=None)
 
     args, extra_ns3_args = ap.parse_known_args()
