@@ -25,7 +25,7 @@ def main(sim_time=60, calc_interval=5, n_ships=5,
          export_dir=SIM_OUT / "exports" / "direct",
          plot_dir=SIM_OUT / "plots", make_plots=True,
          uav_speed_kmh=130.0, placement_mode='optimized',
-         min_alt_m=1500.0, max_alt_m=6100.0):
+         min_alt_m=1500.0, max_alt_m=6100.0, grid_shape=(9, 9, 5)):
 
     if not np.isfinite(uav_speed_kmh) or uav_speed_kmh <= 0:
         raise ValueError('uav_speed_kmh must be a positive finite number')
@@ -34,8 +34,8 @@ def main(sim_time=60, calc_interval=5, n_ships=5,
         raise ValueError('altitude range must be finite, non-negative, and ordered')
     if not np.isfinite(calc_interval) or calc_interval <= 0:
         raise ValueError('calc_interval must be a positive finite number')
-    if placement_mode not in ('optimized', 'midpoint'):
-        raise ValueError("placement_mode must be 'optimized' or 'midpoint'")
+    if placement_mode not in ('optimized', 'midpoint', 'grid'):
+        raise ValueError("placement_mode must be 'optimized', 'midpoint' or 'grid'")
 
     # load dem
     dem_dataset = load_dem(dem_file_path)
@@ -101,6 +101,7 @@ def main(sim_time=60, calc_interval=5, n_ships=5,
                 min_alt_m=min_alt_m,
                 max_alt_m=max_alt_m,
                 optimize=placement_mode == 'optimized',
+                grid_shape=grid_shape if placement_mode == 'grid' else None,
             )
         except TimeoutError:
             break
@@ -727,8 +728,16 @@ def place_uavs(ships_enu, dem_dataset, lat_ref_deg, lon_ref_deg,
                maxiter=35, popsize=8,
                random_state=7, time_budget_s=10.0,
                previous_uav_enu=None, travel_time_minutes=None,
-               uav_speed_kmh=130.0, optimize=True):
-    """Place one UAV, optionally evaluating only the midpoint candidate."""
+               uav_speed_kmh=130.0, optimize=True, grid_shape=None):
+    """Place one UAV.
+
+    Default: midpoint seed + differential evolution within time_budget_s.
+    optimize=False: evaluate only the midpoint candidate.
+    grid_shape=(nx, ny, nz): brute-force reference - evaluate the midpoint seed plus
+    every point of an nx*ny*nz grid over the same search bounds through the SAME
+    objective (including the travel penalty) used by the optimiser; no time limit,
+    DE is not run (pass optimize=False with it).
+    """
     import time
 
     if not np.isfinite(uav_speed_kmh) or uav_speed_kmh <= 0:
@@ -832,7 +841,16 @@ def place_uavs(ships_enu, dem_dataset, lat_ref_deg, lon_ref_deg,
     )
     try:
         evaluate(midpoint_seed)
-        if optimize:
+        if grid_shape is not None:
+            if len(grid_shape) != 3 or min(grid_shape) < 2:
+                raise ValueError('grid_shape must be three integers >= 2')
+            axes = [np.linspace(lo, hi, int(n))
+                    for (lo, hi), n in zip(bounds, grid_shape)]
+            for east in axes[0]:
+                for north in axes[1]:
+                    for altitude in axes[2]:
+                        evaluate(np.array([east, north, altitude]))
+        elif optimize:
             differential_evolution(
                 evaluate,
                 bounds=bounds,

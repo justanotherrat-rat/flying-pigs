@@ -5,3 +5,4 @@ networkx
 pyproj
 rasterio
 pytest
+mpmath

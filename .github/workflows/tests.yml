@@ -1,0 +1,16 @@
+name: tests
+on: [push, pull_request]
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - run: pip install -r requirements.txt
+      # g++ ships on ubuntu-latest; test_itu_p527.py compiles the real physics from
+      # simulation/uav_mesh_eval.cc and FAILS (not skips) if no compiler is found (CI=true).
+      - run: python -m pytest test -m "not slow"

@@ -229,9 +229,12 @@ def main():
     ap.add_argument("--out-prefix", default="rep",
                     help="ns-3 result files are <out-prefix><i>_*.csv in "
                          "<work-dir>/ns3, i=0..n-1")
-    ap.add_argument("--placement-mode", choices=("optimized", "midpoint"),
+    ap.add_argument("--placement-mode", choices=("optimized", "midpoint", "grid"),
                     default="optimized",
-                    help="single placement mode to run (default: optimized)")
+                    help="single placement mode to run (default: optimized). 'grid' is the "
+                         "brute-force reference (see --grid)")
+    ap.add_argument("--grid", type=int, nargs=3, default=(9, 9, 5), metavar=("NX", "NY", "NZ"),
+                    help="grid resolution for --placement-mode grid (default 9 9 5)")
     ap.add_argument("--compare-midpoint", action="store_true",
                     help="run optimized and midpoint placements for each identical scenario")
 
@@ -323,6 +326,7 @@ def main():
                 placement_mode=placement,
                 min_alt_m=args.uav_min_alt_m,
                 max_alt_m=args.uav_max_alt_m,
+                grid_shape=tuple(args.grid),
             )
             run_pipeline.run_ns3(ns3_root, scratch_name, export_dir, str(output_prefix),
                                 [f"--run={ns3_run}"] + extra_ns3_args)
