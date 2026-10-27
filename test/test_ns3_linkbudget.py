@@ -1,10 +1,9 @@
 """Optional checks on ns-3's <out>_linkbudget.csv (written by uav_mesh_eval.cc).
 
 These run only if a link-budget file is found, because ns-3 itself is not needed
-for the rest of the suite. By default, files are read from sim-out/. Point at
-other files with
+for the rest of the suite. Point at files with
     NS3_LINKBUDGET=/path/to/result_linkbudget.csv[:other.csv]   pytest
-Assumes default radio settings
+or drop *_linkbudget.csv anywhere in the repo. Assumes default radio settings
 (sea state 3, vertical polarisation, 20 C, 35 ppt); override with SEA_STATE, POL_V.
 """
 import csv
@@ -18,24 +17,13 @@ from helpers import fspl_db, two_ray_db
 
 pytestmark = pytest.mark.ns3_output
 REPO = Path(__file__).resolve().parents[1]
-SIM_OUT = REPO / "sim-out"
 
 
-def _files(sim_out=SIM_OUT):
+def _files():
     env = os.environ.get("NS3_LINKBUDGET")
     if env:
         return [Path(p) for p in env.split(os.pathsep) if p] or []
-    return sorted(sim_out.rglob("*_linkbudget.csv"))
-
-
-def test_default_search_is_limited_to_sim_out(monkeypatch, tmp_path):
-    monkeypatch.delenv("NS3_LINKBUDGET", raising=False)
-    sim_out = tmp_path / "sim-out"
-    expected = sim_out / "rep0_linkbudget.csv"
-    expected.parent.mkdir(parents=True)
-    expected.touch()
-    (tmp_path / "outside_linkbudget.csv").touch()
-    assert _files(sim_out) == [expected]
+    return sorted(REPO.rglob("*_linkbudget.csv"))
 
 
 FILES = _files()
@@ -64,9 +52,20 @@ def test_columns_present(rows):
             "point_loss_db", "rx_dbm", "snr_db", "outage_prob"} <= set(rows[0])
 
 
+# The C++ writes dist_km and heights with 2 decimals and losses with 2 decimals, so a
+# value recomputed from the CSV can legitimately differ from the simulator's own
+# (unrounded) number. Tolerances below are derived from that precision, not guessed.
+DIST_ROUND_M = 5.0      # dist_km rounded to 0.01 km  -> +-5 m
+H_ROUND_M = 0.005       # heights rounded to 0.01 m   -> +-0.005 m
+OUT_ROUND_DB = 0.01     # losses written with 2 decimals
+
+
 def test_fspl_column_matches_formula(rows):
     for r in rows:
-        assert F(r, "fspl_db") == pytest.approx(fspl_db(F(r, "dist_km") * 1000, freq(r)), abs=0.05)
+        d = F(r, "dist_km") * 1000
+        tol = 8.686 * DIST_ROUND_M / max(d, 1.0) + OUT_ROUND_DB      # d(FSPL) = 8.686 * dd/d
+        assert F(r, "fspl_db") == pytest.approx(fspl_db(d, freq(r)), abs=tol), (
+            f"step {r['step']} link {r['i']}-{r['j']} {r['band']}: d={d:.0f} m")
 
 
 def test_noise_floor_is_constant_and_physical(rows):
@@ -92,27 +91,44 @@ def test_outage_probability_is_a_probability_and_falls_with_snr(rows):
             assert pts[-1][1] <= pts[0][1] + 1e-9
 
 
+def _envelope(d3, h1, h2, f, horizontal):
+    """Min/max reference loss over every (d, h1, h2) that rounds to the CSV values."""
+    vals = []
+    for dd in np.linspace(-DIST_ROUND_M, DIST_ROUND_M, 21):
+        for e1 in (-H_ROUND_M, H_ROUND_M):
+            for e2 in (-H_ROUND_M, H_ROUND_M):
+                a, b, dist = h1 + e1, h2 + e2, d3 + dd
+                d = np.sqrt(max(dist * dist - (a - b) ** 2, 1.0)) if horizontal else dist
+                vals.append(two_ray_db(d, a, b, f, SEA_STATE, POL_V))
+    return min(vals) - OUT_ROUND_DB, max(vals) + OUT_ROUND_DB
+
+
 def test_two_ray_matches_independent_reference(rows):
-    """Passes if the report agrees with the reference using EITHER the distance as
-    written (3D slant range) or the horizontal range - see the test below."""
+    """Passes if the reported loss lies inside the reference's range over the CSV's rounding
+    interval, using EITHER the distance as written (3D slant range) or the horizontal range
+    (see the xfail test below). A real error has to exceed the rounding envelope to fail."""
     bad = []
     for r in rows:
-        d, h1, h2 = F(r, "dist_km") * 1000, F(r, "h1_m"), F(r, "h2_m")
-        horiz = np.sqrt(max(d * d - (h1 - h2) ** 2, 1.0))
-        got = F(r, "two_ray_db")
-        ref_as_written = two_ray_db(d, h1, h2, freq(r), SEA_STATE, POL_V)
-        ref_horizontal = two_ray_db(horiz, h1, h2, freq(r), SEA_STATE, POL_V)
-        if min(abs(got - ref_as_written), abs(got - ref_horizontal)) > 0.3:
-            bad.append((r["step"], r["i"], r["j"], got, ref_as_written, ref_horizontal))
-    assert not bad, f"{len(bad)} links disagree with the reference, e.g. {bad[:3]}"
+        d, h1, h2, got = F(r, "dist_km") * 1000, F(r, "h1_m"), F(r, "h2_m"), F(r, "two_ray_db")
+        ok = False
+        for horizontal in (False, True):
+            lo, hi = _envelope(d, h1, h2, freq(r), horizontal)
+            ok = ok or (lo <= got <= hi)
+        if not ok:
+            lo, hi = _envelope(d, h1, h2, freq(r), False)
+            bad.append((r["step"], r["i"], r["j"], r["band"], got, round(lo, 2), round(hi, 2)))
+    assert not bad, f"{len(bad)} links outside the reference envelope, e.g. {bad[:3]}"
 
-
-@pytest.mark.xfail(reason="known: offline report passes the 3D slant range (links.csv dist_m) "
-                          "into TwoRaySeaLoss, which expects horizontal range; the live "
-                          "RefreshLoss uses horizontal. Remove xfail once fixed.", strict=False)
 def test_report_uses_horizontal_range_like_the_live_simulation(rows):
+    """Only links where the two conventions give distinguishable answers (rounding envelopes
+    do not overlap) can decide this; typically ship-UAV links with a large height difference."""
+    decided = 0
     for r in rows:
-        d, h1, h2 = F(r, "dist_km") * 1000, F(r, "h1_m"), F(r, "h2_m")
-        horiz = np.sqrt(max(d * d - (h1 - h2) ** 2, 1.0))
-        assert F(r, "two_ray_db") == pytest.approx(
-            two_ray_db(horiz, h1, h2, freq(r), SEA_STATE, POL_V), abs=0.3)
+        d, h1, h2, got = F(r, "dist_km") * 1000, F(r, "h1_m"), F(r, "h2_m"), F(r, "two_ray_db")
+        lo_s, hi_s = _envelope(d, h1, h2, freq(r), False)
+        lo_h, hi_h = _envelope(d, h1, h2, freq(r), True)
+        if hi_h < lo_s or hi_s < lo_h:
+            decided += 1
+            assert lo_h <= got <= hi_h, f"step {r['step']} link {r['i']}-{r['j']} {r['band']}"
+    if not decided:
+        pytest.skip("no link in this file distinguishes slant from horizontal range")

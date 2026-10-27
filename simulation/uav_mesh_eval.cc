@@ -184,7 +184,7 @@ struct Edge
     uint32_t i;
     uint32_t j;
     bool isKu;   // true = Ku-band link, false = L-band link
-    double dist; // horizontal-equivalent distance between i and j, metres
+    double dist; // 3D distance from links.csv, metres
     double h1;   // antenna height of node i, metres above sea level
     double h2;   // antenna height of node j, metres above sea level
 };
@@ -1284,7 +1284,10 @@ main(int argc, char* argv[])
                 }
                 const double f = e.isKu ? g_freqKuGhz : g_freqLGhz;
                 const double fsplDb = Fspl(e.dist, f);
-                const double twoRayDb = TwoRaySeaLoss(e.dist, e.h1, e.h2, f, g_seaState, g_polV);
+                const double horizontalDist =
+                    std::sqrt(std::max(e.dist * e.dist - (e.h1 - e.h2) * (e.h1 - e.h2), 1.0));
+                const double twoRayDb =
+                    TwoRaySeaLoss(horizontalDist, e.h1, e.h2, f, g_seaState, g_polV);
                 // Per-endpoint antenna gain: the UAV has its own gain figure
                 // on each band (may differ from a ship's), so look each side
                 // up individually rather than assuming "one end is always a
