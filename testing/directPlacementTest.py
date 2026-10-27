@@ -1,5 +1,4 @@
-"""Directly validate UAV placement against a grid on a workspace DEM.
-
+"""Directly validate UAV placement against a grid.
 Run from the repository root:
     python testing/directPlacementTest.py
 

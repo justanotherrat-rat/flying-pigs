@@ -60,6 +60,10 @@ import sys
 from pathlib import Path
 
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+SIM_OUT = PROJECT_ROOT / "sim-out"
+
+
 def sync_scratch_file(cc_file: Path, ns3_root: Path) -> Path:
     """Copy cc_file into <ns3_root>/scratch/, skipping the copy if the file
     there is already identical (avoids bumping its mtime and triggering an
@@ -93,7 +97,11 @@ def run_ns3(ns3_root: Path, scratch_name: str, export_dir: Path, out_prefix: str
     # this script was invoked from - the exact "--dir=ns3_export: No such
     # file" mistake that came up more than once running this by hand.
     dir_abs = export_dir.resolve()
-    run_arg = f"scratch/{scratch_name} --dir={dir_abs} --out={out_prefix}"
+    output_prefix = Path(out_prefix).expanduser()
+    if not output_prefix.is_absolute():
+        output_prefix = SIM_OUT / "ns3" / output_prefix
+    output_prefix.parent.mkdir(parents=True, exist_ok=True)
+    run_arg = f"scratch/{scratch_name} --dir={dir_abs} --out={output_prefix}"
     if extra_args:
         run_arg += " " + " ".join(extra_args)
 
@@ -119,9 +127,9 @@ def main():
     nb.add_argument("--uav-max-alt-m", type=float, default=6100.0,
                     help="maximum UAV altitude in metres (default 6100)")
     nb.add_argument("--dem-file", default=None, help="path to DEM GeoTIFF")
-    nb.add_argument("--export-dir", default="ns3_export",
+    nb.add_argument("--export-dir", default=str(SIM_OUT / "exports" / "pipeline"),
                     help="where nodes.csv/links.csv are written and read from")
-    nb.add_argument("--plot-dir", default="plots")
+    nb.add_argument("--plot-dir", default=str(SIM_OUT / "plots"))
     nb.add_argument("--skip-notebook", action="store_true",
                     help="reuse an existing --export-dir instead of re-running the "
                          "notebook stage (e.g. when only re-running ns-3 with "
@@ -134,7 +142,8 @@ def main():
     ns.add_argument("--ns3-root", required=True, help="path to your ns-3 checkout")
     ns.add_argument("--cc-file", default=None,
                     help="path to uav_mesh_eval.cc; default looks next to this script")
-    ns.add_argument("--out", default="result", help="output file prefix for the ns-3 stage")
+    ns.add_argument("--out", default=str(SIM_OUT / "ns3" / "result"),
+                    help="ns-3 output file prefix (relative paths go under sim-out/ns3)")
     ns.add_argument("--compare", action="store_true",
                     help="run BOTH --useUav=1 (as <out>_uav) and --useUav=0 (as "
                          "<out>_baseline) against the SAME export, so the two are a fair "

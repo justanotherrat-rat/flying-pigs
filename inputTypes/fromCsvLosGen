@@ -112,6 +112,7 @@ def main(ships_csv_path='ships.csv'):
             ships_lla,
             individual_speeds_knots,
             individual_headings_deg,
+            dem_dataset,
             calc_interval)
 
         # generate new los graph for the *next* iteration's placement/plot
@@ -186,6 +187,22 @@ def is_on_land(lon, lat, dem_dataset, sea_level_threshold=0.0):
     if elevation is None:
         return True  # treat unknown as land
     return elevation > sea_level_threshold
+
+
+def is_path_on_land(lon_start, lat_start, lon_end, lat_end, dem_dataset):
+    """Return True if a movement path intersects land or unknown DEM coverage."""
+    resolution_lon, resolution_lat = dem_dataset.res
+    pixel_distance = max(
+        abs(lon_end - lon_start) / abs(resolution_lon),
+        abs(lat_end - lat_start) / abs(resolution_lat),
+    )
+    sample_count = max(1, int(np.ceil(pixel_distance * 4)))
+    for fraction in np.linspace(0.0, 1.0, sample_count + 1)[1:]:
+        lon = lon_start + (lon_end - lon_start) * fraction
+        lat = lat_start + (lat_end - lat_start) * fraction
+        if is_on_land(lon, lat, dem_dataset):
+            return True
+    return False
 
 
 def get_elevation_profile(lat1, lon1, lat2, lon2, dem_dataset, num_points=50):
@@ -1010,6 +1027,7 @@ def update_ship_positions_lla(
         current_lla,
         speeds_knots,
         headings_deg,
+        dem_dataset,
         time_step_minutes=5):
     """
     Updates ship LLA positions based on individual speeds, headings, and time step. Approximation suitable for relatively short distances.
@@ -1052,8 +1070,14 @@ def update_ship_positions_lla(
         delta_lon_deg = np.degrees(
             delta_lon_m / (EARTH_RADIUS * np.cos(lat_rad)))
 
-        new_lla[i, 0] = lat_deg + delta_lat_deg
-        new_lla[i, 1] = lon_deg + delta_lon_deg
+        new_lat_deg = lat_deg + delta_lat_deg
+        new_lon_deg = lon_deg + delta_lon_deg
+        if is_path_on_land(lon_deg, lat_deg, new_lon_deg, new_lat_deg,
+                           dem_dataset):
+            continue
+
+        new_lla[i, 0] = new_lat_deg
+        new_lla[i, 1] = new_lon_deg
         # Altitude constant
         new_lla[i, 2] = alt_m
 

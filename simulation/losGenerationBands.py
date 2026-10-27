@@ -16,11 +16,14 @@ from pathlib import Path
 import csv
 import os
 
+SIM_OUT = Path(__file__).resolve().parents[1] / "sim-out"
+
 # main loop---------------------------------------------------------------
 
 def main(sim_time=60, calc_interval=5, n_ships=5,
          placement_budget_s=10.0, dem_file_path=None,
-         export_dir='ns3_export', plot_dir='plots', make_plots=True,
+         export_dir=SIM_OUT / "exports" / "direct",
+         plot_dir=SIM_OUT / "plots", make_plots=True,
          uav_speed_kmh=130.0, placement_mode='optimized',
          min_alt_m=1500.0, max_alt_m=6100.0):
 
@@ -129,6 +132,7 @@ def main(sim_time=60, calc_interval=5, n_ships=5,
             ships_lla,
             individual_speeds_knots,
             individual_headings_deg,
+            dem_dataset,
             calc_interval)
 
         # generate new los graph for the *next* iteration's placement/plot
@@ -203,6 +207,22 @@ def is_on_land(lon, lat, dem_dataset, sea_level_threshold=0.0):
     if elevation is None:
         return True  # treat unknown as land
     return elevation > sea_level_threshold
+
+
+def is_path_on_land(lon_start, lat_start, lon_end, lat_end, dem_dataset):
+    """Return True if a movement path intersects land or unknown DEM coverage."""
+    resolution_lon, resolution_lat = dem_dataset.res
+    pixel_distance = max(
+        abs(lon_end - lon_start) / abs(resolution_lon),
+        abs(lat_end - lat_start) / abs(resolution_lat),
+    )
+    sample_count = max(1, int(np.ceil(pixel_distance * 4)))
+    for fraction in np.linspace(0.0, 1.0, sample_count + 1)[1:]:
+        lon = lon_start + (lon_end - lon_start) * fraction
+        lat = lat_start + (lat_end - lat_start) * fraction
+        if is_on_land(lon, lat, dem_dataset):
+            return True
+    return False
 
 
 def get_elevation_profile(lat1, lon1, lat2, lon2, dem_dataset, num_points=50):
@@ -344,6 +364,7 @@ def enu_to_lla(e, n, u, lat_ref_deg, lon_ref_deg, alt_ref_m):
 # ship<->ship, ship<->UAV links are L-band, ship<->UAV links are Ku-band.
 FREQ_L_GHZ = 1.5    # L-band centre frequency (ship-ship)
 FREQ_KU_GHZ = 16.0  # Ku-band centre frequency (ship-UAV)
+EFFECTIVE_EARTH_RADIUS_M = (4.0 / 3.0) * 6371000.0
 
 
 def calculate_fresnel_radius(d, d1, freq_ghz):
@@ -394,6 +415,7 @@ def check_fresnel_obstruction(
 
     num_fresnel_checks = 0
     total_obstructed_points = 0
+    horizontal_path_distance = np.linalg.norm(p2_enu[:2] - p1_enu[:2])
 
     for i, data in enumerate(elevation_profile):
         fraction_along_path = i / \
@@ -404,14 +426,19 @@ def check_fresnel_obstruction(
         distance_from_p1 = fraction_along_path * total_path_distance
         fresnel_r = calculate_fresnel_radius(
             total_path_distance, distance_from_p1, freq_ghz)
-        # print(f"fresnel radius {fresnel_r}")
+        distance_along_ground = fraction_along_path * horizontal_path_distance
+        earth_bulge = (
+            distance_along_ground
+            * (horizontal_path_distance - distance_along_ground)
+            / (2.0 * EFFECTIVE_EARTH_RADIUS_M)
+        )
 
         if fresnel_r > 0:
             # Calculate the lowest allowed height for the bottom of the 60% clear Fresnel zone
             # Terrain cannot be higher than `current_path_alt - (0.6 *
-            # fresnel_r)`.
+            # fresnel_r)`, accounting for the 4/3-Earth bulge.
             lowest_allowed_terrain_height = current_path_alt - \
-                (0.6 * fresnel_r)
+                (earth_bulge + 0.6 * fresnel_r)
             # print(f"terrain alt: {terrain_alt}, allowed height: {lowest_allowed_terrain_height}")
             if terrain_alt > lowest_allowed_terrain_height:
                 total_obstructed_points += 1
@@ -883,6 +910,7 @@ def update_ship_positions_lla(
         current_lla,
         speeds_knots,
         headings_deg,
+        dem_dataset,
         time_step_minutes=5):
     """
     Updates ship LLA positions based on individual speeds, headings, and time step. Approximation suitable for relatively short distances.
@@ -925,8 +953,14 @@ def update_ship_positions_lla(
         delta_lon_deg = np.degrees(
             delta_lon_m / (EARTH_RADIUS * np.cos(lat_rad)))
 
-        new_lla[i, 0] = lat_deg + delta_lat_deg
-        new_lla[i, 1] = lon_deg + delta_lon_deg
+        new_lat_deg = lat_deg + delta_lat_deg
+        new_lon_deg = lon_deg + delta_lon_deg
+        if is_path_on_land(lon_deg, lat_deg, new_lon_deg, new_lat_deg,
+                           dem_dataset):
+            continue
+
+        new_lla[i, 0] = new_lat_deg
+        new_lla[i, 1] = new_lon_deg
         # Altitude constant
         new_lla[i, 2] = alt_m
 

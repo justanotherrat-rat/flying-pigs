@@ -41,6 +41,8 @@ USAGE
 Results land in <work-dir>/replication_results.csv (one row per replication),
 <work-dir>/replication_ship_metrics.csv (one row per ship per replication),
 and <work-dir>/replication_summary.csv (aggregated by placement when comparing).
+By default, <work-dir> is the repository's sim-out/ directory; ns-3 CSV outputs
+are stored in its ns3/ subdirectory.
 Use --compare-midpoint to compare the optimizer with the midpoint-only baseline
 on paired ship scenarios, or --placement-mode midpoint to run only the baseline.
 Signal and ETX are explicitly link-budget estimates; latency, throughput, and
@@ -153,10 +155,10 @@ def evaluate_ship_metrics(data_rows: list[dict], link_metrics: dict[int, dict[st
     return evaluated
 
 
-def summarise_replication(ns3_root: Path, out_prefix: str, export_dir: Path,
+def summarise_replication(ns3_output_dir: Path, out_prefix: str, export_dir: Path,
                           replication: int, ship_count: int) -> tuple[dict, list[dict]]:
     """Reads one replication's *_telemetry.csv / *_datatransfer.csv /
-    *_mac.csv (written by uav_mesh_eval.cc into ns3_root) and reduces each to
+    *_mac.csv (written by uav_mesh_eval.cc into ns3_output_dir) and reduces each to
     the handful of scalars worth tracking across replications. Per-ship rows
     are combined by summing counts (so the result is a true fleet-wide PDR,
     not an average of five PDR percentages) and weighting delay/hop averages
@@ -168,23 +170,23 @@ def summarise_replication(ns3_root: Path, out_prefix: str, export_dir: Path,
             return 0.0
         return sum(int(r[rx_key]) * float(r[val_key]) for r in rows) / totalW
 
-    tel = read_csv_dicts(ns3_root / f"{out_prefix}_telemetry.csv")
+    tel = read_csv_dicts(ns3_output_dir / f"{out_prefix}_telemetry.csv")
     rx = sum(int(r["rx_receptions"]) for r in tel)
     possible = sum(int(r["possible_receptions"]) for r in tel)
 
-    dat = read_csv_dicts(ns3_root / f"{out_prefix}_datatransfer.csv")
+    dat = read_csv_dicts(ns3_output_dir / f"{out_prefix}_datatransfer.csv")
     drx = sum(int(r["rx_pkts"]) for r in dat)
     doff = sum(int(r["offered_pkts"]) for r in dat)
     uav_node = ship_count
     link_metrics = route_link_metrics(
-        ns3_root / f"{out_prefix}_linkbudget.csv",
+        ns3_output_dir / f"{out_prefix}_linkbudget.csv",
         export_dir / "nodes.csv",
         list(range(ship_count)),
         uav_node,
     )
     ship_metrics = evaluate_ship_metrics(dat, link_metrics, replication)
 
-    mac = {r["band"]: r for r in read_csv_dicts(ns3_root / f"{out_prefix}_mac.csv")}
+    mac = {r["band"]: r for r in read_csv_dicts(ns3_output_dir / f"{out_prefix}_mac.csv")}
 
     summary = {
         "telemetry_pdr_pct": 100.0 * rx / possible if possible else 0.0,
@@ -219,10 +221,14 @@ def main():
                     help="base seed; replication i uses Python seed (seed+i) and ns-3 "
                          "--run (seed+i). Omit for a fresh, non-reproducible seed each run "
                          "(ns-3 --run still varies 1,2,3,... across replications either way).")
-    ap.add_argument("--work-dir", default="replications",
-                    help="per-replication export directories go under here")
+    project_root = Path(__file__).resolve().parents[1]
+    default_work_dir = project_root / "sim-out"
+    ap.add_argument("--work-dir", default=str(default_work_dir),
+                    help="directory for exports, ns-3 outputs, plots, and summaries "
+                         f"(default: {default_work_dir})")
     ap.add_argument("--out-prefix", default="rep",
-                    help="ns-3 result files are <out-prefix><i>_*.csv in --ns3-root, i=0..n-1")
+                    help="ns-3 result files are <out-prefix><i>_*.csv in "
+                         "<work-dir>/ns3, i=0..n-1")
     ap.add_argument("--placement-mode", choices=("optimized", "midpoint"),
                     default="optimized",
                     help="single placement mode to run (default: optimized)")
@@ -263,8 +269,10 @@ def main():
     notebook_file = Path(args.notebook_file) if args.notebook_file else here / "losGenerationBands.py"
     cc_file = Path(args.cc_file) if args.cc_file else here / "uav_mesh_eval.cc"
     ns3_root = Path(args.ns3_root).resolve()
-    work_dir = Path(args.work_dir)
+    work_dir = Path(args.work_dir).expanduser().resolve()
     work_dir.mkdir(parents=True, exist_ok=True)
+    ns3_output_dir = work_dir / "ns3"
+    ns3_output_dir.mkdir(parents=True, exist_ok=True)
 
     if not notebook_file.exists():
         ap.error(f"notebook file not found: {notebook_file}")
@@ -298,6 +306,7 @@ def main():
                 out_prefix_i = f"{args.out_prefix}{i}_{placement}"
             else:
                 out_prefix_i = f"{args.out_prefix}{i}"
+            output_prefix = ns3_output_dir / out_prefix_i
 
             print(f"\n[replications] ===== run {i + 1}/{args.n} "
                   f"({placement}, seed={rep_seed}, ns-3 --run={ns3_run}) =====")
@@ -315,12 +324,12 @@ def main():
                 min_alt_m=args.uav_min_alt_m,
                 max_alt_m=args.uav_max_alt_m,
             )
-            run_pipeline.run_ns3(ns3_root, scratch_name, export_dir, out_prefix_i,
+            run_pipeline.run_ns3(ns3_root, scratch_name, export_dir, str(output_prefix),
                                 [f"--run={ns3_run}"] + extra_ns3_args)
 
             try:
                 summary, ship_metrics = summarise_replication(
-                    ns3_root, out_prefix_i, export_dir, i, args.n_ships)
+                    ns3_output_dir, out_prefix_i, export_dir, i, args.n_ships)
             except FileNotFoundError as e:
                 print(f"[replications] WARNING: replication {i} ({placement}) "
                       f"produced no result files ({e}) - skipping this result.")
