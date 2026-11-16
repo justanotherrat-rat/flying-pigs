@@ -1,0 +1,64 @@
+diff --git a/simulation/uav_mesh_eval.cc b/simulation/uav_mesh_eval.cc
+index 4f6abad..add44ac 100644
+--- a/simulation/uav_mesh_eval.cc
++++ b/simulation/uav_mesh_eval.cc
+@@ -1245,6 +1245,7 @@ main(int argc, char* argv[])
+     double dataPktGapMs = 5.0; // spacing between packets within one burst
+     bool printRoutes = false;
+     bool rtscts = false;
++    bool pinDataKu = false; // pin ship->UAV Ku data to a static on-link Ku route (bypass OLSR for it)
+ 
+     // ---- radio parameters (tx power values given in the scenario brief; the
+     // rest - antenna gains, noise figure, and the UAV's L-band tx power
+@@ -1341,6 +1342,7 @@ main(int argc, char* argv[])
+     cmd.AddValue("stepS", "Seconds between notebook steps", g_stepS);
+     cmd.AddValue("simTime", "Total sim seconds (0 = steps * stepS)", simTime);
+     cmd.AddValue("printRoutes", "Dump routing tables 60 s into every step", printRoutes);
++    cmd.AddValue("pinDataKu", "Static host route ship->UAV Ku address on the Ku interface, so data cannot be routed over L-band", pinDataKu);
+     cmd.AddValue("rtscts", "Enable RTS/CTS on all radios (hidden-terminal test)", rtscts);
+     cmd.AddValue("refreshS",
+                 "Seconds between continuous path-loss recomputes from live position "
+@@ -1714,9 +1716,25 @@ main(int argc, char* argv[])
+     OlsrHelper olsr;
+ 
+     InternetStackHelper internet;
+-    if (routing == "aodv")
++    Ipv4StaticRoutingHelper staticH;
++    Ipv4ListRoutingHelper routingList;
++    AodvHelper aodv;
++    if (pinDataKu)
++    {
++        // static routes are queried first (higher priority number), dynamic routing second
++        routingList.Add(staticH, 10);
++        if (routing == "aodv")
++        {
++            routingList.Add(aodv, 0);
++        }
++        else
++        {
++            routingList.Add(olsr, 0);
++        }
++        internet.SetRoutingHelper(routingList);
++    }
++    else if (routing == "aodv")
+     {
+-        AodvHelper aodv;
+         internet.SetRoutingHelper(aodv);
+     }
+     else
+@@ -1831,6 +1849,15 @@ main(int argc, char* argv[])
+     // independently verified - check *_routes.txt (--printRoutes=1) if you
+     // see otherwise.
+     const Ipv4Address uavKuAddr = ifKu.GetAddress(nShips);
++    if (pinDataKu)
++    {
++        // Every ship reaches the UAV's Ku address directly on its own Ku interface (on-link, no gateway).
++        for (uint32_t s = 0; s < nShips; ++s)
++        {
++            Ptr<Ipv4StaticRouting> sr = staticH.GetStaticRouting(g_nodes.Get(s)->GetObject<Ipv4>());
++            sr->AddHostRouteTo(uavKuAddr, ifKu.Get(s).second);
++        }
++    }
+     const uint32_t burstPkts = std::max<uint32_t>(1, dataBytes / dataPktSize);
+     for (uint32_t s = 0; s < nShips; ++s)
+     {
