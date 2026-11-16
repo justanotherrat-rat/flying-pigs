@@ -1,4 +1,5 @@
 # imports
+import weakref
 import numpy as np
 from scipy.spatial.distance import cdist
 from scipy.sparse import csr_matrix
@@ -180,6 +181,29 @@ def load_dem(dem_file_path=None):
     return dem_dataset
 
 
+# One in-memory copy of each DEM band. Every terrain sample used to be its own 1x1 rasterio
+# read() (milliseconds of GDAL overhead each, thousands of times per placement candidate).
+# Values are identical; False marks a dataset whose read(1) cannot return the whole band
+# (then the per-pixel path below is used). Weak keys: entries vanish with the dataset.
+_DEM_ARRAYS = weakref.WeakKeyDictionary()
+
+
+def _dem_array(dem_dataset):
+    try:
+        arr = _DEM_ARRAYS.get(dem_dataset)
+        if arr is None:
+            try:
+                arr = np.asarray(dem_dataset.read(1))
+                if arr.ndim != 2 or arr.shape != (dem_dataset.height, dem_dataset.width):
+                    arr = False
+            except Exception:
+                arr = False
+            _DEM_ARRAYS[dem_dataset] = arr
+        return arr if arr is not False else None
+    except TypeError:          # dataset is not weak-referenceable
+        return None
+
+
 def get_elevation_at_lonlat(lon, lat, dem_dataset):
     """
     Returns:
@@ -191,8 +215,12 @@ def get_elevation_at_lonlat(lon, lat, dem_dataset):
         row, col = dem_dataset.index(lon, lat)
         if row < 0 or col < 0 or row >= dem_dataset.height or col >= dem_dataset.width:
             return None
-        window = rasterio.windows.Window(col, row, 1, 1)
-        value = dem_dataset.read(1, window=window)[0, 0]
+        arr = _dem_array(dem_dataset)
+        if arr is not None:
+            value = arr[row, col]
+        else:
+            window = rasterio.windows.Window(col, row, 1, 1)
+            value = dem_dataset.read(1, window=window)[0, 0]
         if dem_dataset.nodata is not None and value == dem_dataset.nodata:
             return None
         return float(value)
@@ -497,7 +525,8 @@ def build_los_graph(
     return csr_matrix(adj)
 
 
-def build_dual_band_graph(coords, dem_dataset, lat_ref_deg, lon_ref_deg, n_ships):
+def build_dual_band_graph(coords, dem_dataset, lat_ref_deg, lon_ref_deg, n_ships,
+                          ship_graph_l=None):
     """
     Like build_los_graph, but ship<->UAV pairs are now checked at BOTH bands
     independently, since the UAV carries an L-band radio as well as its
@@ -509,14 +538,28 @@ def build_dual_band_graph(coords, dem_dataset, lat_ref_deg, lon_ref_deg, n_ships
     Returns: (graph_L, graph_Ku), each an (n, n) csr_matrix where a nonzero
     entry is the link distance in metres for that band; the same pair can be
     nonzero in both matrices.
+
+    ship_graph_l: optional (n_ships, n_ships) ship<->ship L-band adjacency from an
+    earlier call. Ship<->ship links do not depend on where the UAV is, so a caller
+    that evaluates many UAV candidates over the SAME ships (place_uavs) computes it
+    once and passes it here; only the ship<->UAV pairs are then evaluated. The
+    result is identical to computing everything (tested).
     """
     n = len(coords)
     dist = cdist(coords, coords)
     adj_l = np.zeros((n, n))
     adj_ku = np.zeros((n, n))
 
+    if ship_graph_l is not None:
+        known = np.asarray(ship_graph_l.toarray() if hasattr(ship_graph_l, 'toarray') else ship_graph_l)
+        if known.shape != (n_ships, n_ships):
+            raise ValueError('ship_graph_l must have shape (n_ships, n_ships)')
+        adj_l[:n_ships, :n_ships] = known
+
     for i in range(n):
         for j in range(i + 1, n):
+            if ship_graph_l is not None and j < n_ships:
+                continue      # ship<->ship pair: already known
             # radio horizon is the same physical formula regardless of band
             # (it's a geometric line-of-sight limit, not a link-budget one)
             max_los_range = 3.57 * \
@@ -777,6 +820,11 @@ def place_uavs(ships_enu, dem_dataset, lat_ref_deg, lon_ref_deg,
         (horizontal_min[1] - margin[1], horizontal_max[1] + margin[1]),
         (min_alt_m, max_alt_m),
     ]
+    # Ship<->ship LoS is independent of the UAV, so build it once instead of for every
+    # candidate (at 30 ships it is 435 of the 465 pairs evaluated per candidate).
+    ship_graph_l = build_dual_band_graph(
+        np.asarray(ships_enu, dtype=float), dem_dataset, lat_ref_deg, lon_ref_deg,
+        n_ships=len(ships_enu))[0]
     deadline = time.perf_counter() + max(0.0, time_budget_s)
     best = {'score': np.inf, 'position': None, 'graph_l': None, 'graph_ku': None,
             'graph': None, 'metrics': None, 'travel_distance_m': None,
@@ -789,7 +837,8 @@ def place_uavs(ships_enu, dem_dataset, lat_ref_deg, lon_ref_deg,
         uav_enu = np.asarray(position, dtype=float).reshape(1, 3)
         all_coords = np.vstack((ships_enu, uav_enu))
         graph_l, graph_ku = build_dual_band_graph(
-            all_coords, dem_dataset, lat_ref_deg, lon_ref_deg, n_ships=len(ships_enu))
+            all_coords, dem_dataset, lat_ref_deg, lon_ref_deg, n_ships=len(ships_enu),
+            ship_graph_l=ship_graph_l)
         # For placement scoring/connectivity, a hop exists if EITHER band is
         # up - the UAV now reaches ships on whichever of its two radios has
         # LoS, so "the UAV is unreachable from ship i" should only be true

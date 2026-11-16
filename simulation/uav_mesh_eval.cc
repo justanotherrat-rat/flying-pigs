@@ -162,6 +162,13 @@
 #include <map>
 #include <set>
 #include <sstream>
+#include "ns3/ipv4-list-routing.h"
+#include "ns3/olsr-routing-protocol.h"
+#include "ns3/wifi-mpdu.h"
+#include "ns3/wifi-psdu.h"
+#include <limits>
+#include <map>
+#include <set>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -724,6 +731,51 @@ FadeOutageProb(double m, double marginDb)
 // first, then Ku, on every node, so DeviceList index 0 = L-band and 1 = Ku.
 // If these stay at exactly 0 even under --fadeKssDb=-100 with low antenna
 // gains, the channel is not influencing reception and something is wrong.
+// Indicative SNR (dB) a fixed Wi-Fi MCS needs, derived from the 802.11 minimum-sensitivity
+// table (MCS0 ~5 dB, +~17 dB by MCS7, ~+25 dB by MCS9). Used ONLY by the link-budget outage
+// column; override per band with --reqSnrLDb / --reqSnrKuDb. Legacy OfdmRate modes use --reqSnrDb.
+static double
+MinSnrDbForMode(const std::string& mode, double legacyDb)
+{
+    static const double mcsSnr[12] = {5, 8, 10, 13, 17, 21, 22, 23, 28, 30, 33, 35};
+    const size_t at = mode.find("Mcs");
+    if (at == std::string::npos)
+    {
+        return legacyDb;
+    }
+    const unsigned long m = std::stoul(mode.substr(at + 3));
+    return mcsSnr[std::min<unsigned long>(m, 11)];
+}
+
+static WifiStandard
+StandardFromString(const std::string& s)
+{
+    if (s == "80211a")
+    {
+        return WIFI_STANDARD_80211a;
+    }
+    if (s == "80211n")
+    {
+        return WIFI_STANDARD_80211n;
+    }
+    if (s == "80211ac")
+    {
+        return WIFI_STANDARD_80211ac;
+    }
+    if (s == "80211ax")
+    {
+        return WIFI_STANDARD_80211ax;
+    }
+    NS_FATAL_ERROR("unknown Wi-Fi standard '" << s << "' (use 80211a | 80211n | 80211ac | 80211ax)");
+    return WIFI_STANDARD_80211a;
+}
+
+static std::string
+DefaultModeFor(const std::string& standard)
+{
+    return standard == "80211n" ? "HtMcs7" : standard == "80211ac" ? "VhtMcs7" : "HeMcs7";
+}
+
 static uint64_t g_macFail[2] = {0, 0}; // failed attempts (no ACK), [0] = L-band, [1] = Ku-band
 static uint64_t g_macDrop[2] = {0, 0}; // frames dropped after the retry limit, same indexing
 
@@ -749,6 +801,160 @@ static void
 OnMacFinalDataFailed(std::string context, Mac48Address /*peer*/)
 {
     g_macDrop[BandFromContext(context)]++;
+}
+
+// ------------------------------------------------------------------ ETX instrumentation
+// Per-link ETX = MAC transmission attempts of unicast DATA frames / MPDUs acknowledged. Attempts
+// are counted at the PHY (PhyTxPsduBegin: every transmission incl. retries, every MPDU of an
+// A-MPDU; ACKs, management and broadcast such as OLSR hellos excluded). Successes are the
+// MAC's AckedMpdu trace. A route's ETX is the SUM of its links' ETX; routes are sampled from
+// each node's OLSR table 60 s into every topology step (same instant as --printRoutes).
+struct MacLinkKey
+{
+    uint32_t tx;
+    uint32_t rx;
+    uint32_t band; // 0 = L, 1 = Ku
+    bool operator<(const MacLinkKey& o) const
+    {
+        return std::tie(tx, rx, band) < std::tie(o.tx, o.rx, o.band);
+    }
+};
+struct LinkCount
+{
+    uint64_t attempts = 0;
+    uint64_t acked = 0;
+};
+struct RouteSample
+{
+    uint32_t src;
+    uint32_t dst;
+    std::string cls; // "telemetry" (ship -> any node, L address) | "data" (ship -> UAV Ku address)
+    std::vector<MacLinkKey> path;
+    bool noRoute;
+};
+static std::map<MacLinkKey, LinkCount> g_linkCount;
+static std::map<Mac48Address, uint32_t> g_macNode;  // every device MAC -> node index
+static std::map<Ipv4Address, uint32_t> g_addrNode;  // every interface address -> node index
+static std::map<Ipv4Address, uint32_t> g_addrBand;  // ... and its band (0 = L, 1 = Ku)
+static std::vector<RouteSample> g_routeSamples;
+static uint32_t g_nShipsGlobal = 0;
+static Ipv4Address g_uavKuAddr;
+static std::vector<Ipv4Address> g_nodeLAddr;
+
+static uint32_t
+NodeFromContext(const std::string& context)
+{
+    const std::string key = "NodeList/";
+    const size_t at = context.find(key);
+    return at == std::string::npos ? UINT32_MAX : static_cast<uint32_t>(std::stoul(context.substr(at + key.size())));
+}
+
+static void
+OnPhyTxPsduBegin(std::string context, WifiConstPsduMap psduMap, WifiTxVector /*txVector*/, double /*txPowerW*/)
+{
+    const uint32_t tx = NodeFromContext(context);
+    const uint32_t band = BandFromContext(context);
+    for (const auto& kv : psduMap)
+    {
+        const Ptr<const WifiPsdu>& psdu = kv.second;
+        if (!psdu->GetHeader(0).IsData() || psdu->GetAddr1().IsGroup())
+        {
+            continue; // not a unicast data frame
+        }
+        const auto it = g_macNode.find(psdu->GetAddr1());
+        if (it != g_macNode.end())
+        {
+            g_linkCount[MacLinkKey{tx, it->second, band}].attempts += psdu->GetNMpdus();
+        }
+    }
+}
+
+static void
+OnAckedMpdu(std::string context, Ptr<const WifiMpdu> mpdu)
+{
+    const Mac48Address rx = mpdu->GetHeader().GetAddr1();
+    const auto it = g_macNode.find(rx);
+    if (!rx.IsGroup() && it != g_macNode.end())
+    {
+        g_linkCount[MacLinkKey{NodeFromContext(context), it->second, BandFromContext(context)}].acked++;
+    }
+}
+
+static Ptr<olsr::RoutingProtocol>
+OlsrOf(Ptr<Node> node)
+{
+    Ptr<Ipv4RoutingProtocol> rp = node->GetObject<Ipv4>()->GetRoutingProtocol();
+    if (Ptr<Ipv4ListRouting> lr = DynamicCast<Ipv4ListRouting>(rp))
+    {
+        int16_t prio;
+        for (uint32_t i = 0; i < lr->GetNRoutingProtocols(); ++i)
+        {
+            if (Ptr<olsr::RoutingProtocol> o = DynamicCast<olsr::RoutingProtocol>(lr->GetRoutingProtocol(i, prio)))
+            {
+                return o;
+            }
+        }
+    }
+    return DynamicCast<olsr::RoutingProtocol>(rp);
+}
+
+// Follow the OLSR next-hop chain from `src` towards interface address `target`. With no OLSR
+// entry at the source, ns-3 falls back to the directly-connected route, i.e. one MAC hop
+// straight to the destination (which fails at the MAC if it is out of range).
+static void
+WalkRoute(uint32_t src, Ipv4Address target, const std::string& cls)
+{
+    RouteSample rs{src, g_addrNode.at(target), cls, {}, false};
+    uint32_t cur = src;
+    for (int hop = 0; hop < 12 && cur != rs.dst; ++hop)
+    {
+        uint32_t next = UINT32_MAX;
+        uint32_t band = g_addrBand.at(target);
+        if (Ptr<olsr::RoutingProtocol> o = OlsrOf(g_nodes.Get(cur)))
+        {
+            for (const auto& e : o->GetRoutingTableEntries())
+            {
+                if (e.destAddr == target)
+                {
+                    const auto it = g_addrNode.find(e.nextAddr);
+                    if (it != g_addrNode.end())
+                    {
+                        next = it->second;
+                        band = g_addrBand.at(e.nextAddr);
+                    }
+                    break;
+                }
+            }
+        }
+        if (next == UINT32_MAX)
+        {
+            if (hop > 0)
+            {
+                break; // a relay with no route: the packet would be dropped there
+            }
+            next = rs.dst; // directly-connected fallback
+        }
+        rs.path.push_back(MacLinkKey{cur, next, band});
+        cur = next;
+    }
+    rs.noRoute = (cur != rs.dst);
+    g_routeSamples.push_back(rs);
+}
+
+static void
+SampleRoutes()
+{
+    for (uint32_t s = 0; s < g_nShipsGlobal; ++s)
+    {
+        for (uint32_t d = 0; d < g_nodes.GetN(); ++d)
+        {
+            if (d != s)
+            {
+                WalkRoute(s, g_nodeLAddr[d], "telemetry");
+            }
+        }
+        WalkRoute(s, g_uavKuAddr, "data");
+    }
 }
 
 // Convert simulation time to a step index, clamped to the last valid bucket
@@ -1054,6 +1260,14 @@ main(int argc, char* argv[])
     double gainKuUav = 25.0;  // Ku UAV antenna gain, dBi (assumed)
     double noiseFigure = 7.0; // receiver noise figure, dB (ns-3 default)
     double reqSnrDb = 5.0;    // SNR needed to decode the fixed data rate; ~5 dB for 6 Mbps 802.11a (BPSK 1/2)
+    std::string stdL = "80211a";  // Wi-Fi standard per band: 80211a | 80211n | 80211ac | 80211ax
+    std::string stdKu = "80211a";
+    uint32_t widthL = 20;         // channel width per band, MHz (20/40/80/160 as the standard allows)
+    uint32_t widthKu = 20;
+    double reqSnrLDb = -1000.0;   // <= -999: derive from the mode (MinSnrDbForMode)
+    double reqSnrKuDb = -1000.0;
+    double dataRateMbps = 0.0;    // > 0: SATURATING ship->UAV flow (Ku) at this rate, replaces the bursts
+    double lbandRateMbps = 0.0;   // > 0: each ship streams this rate to the NEXT ship over L-band
 
     CommandLine cmd(__FILE__);
     cmd.AddValue("dir", "Folder with nodes.csv and links.csv", dir);
@@ -1071,6 +1285,18 @@ main(int argc, char* argv[])
                 dataPktGapMs);
     cmd.AddValue("modeL", "Fixed 802.11a data rate on L-band", modeL);
     cmd.AddValue("modeKu", "Fixed 802.11a data rate on Ku-band", modeKu);
+    cmd.AddValue("stdL", "L-band Wi-Fi standard: 80211a | 80211n | 80211ac | 80211ax", stdL);
+    cmd.AddValue("stdKu", "Ku-band Wi-Fi standard: 80211a | 80211n | 80211ac | 80211ax", stdKu);
+    cmd.AddValue("widthL", "L-band channel width (MHz)", widthL);
+    cmd.AddValue("widthKu", "Ku-band channel width (MHz)", widthKu);
+    cmd.AddValue("reqSnrLDb", "L-band SNR needed for the fixed mode (dB); default derived from the mode",
+                reqSnrLDb);
+    cmd.AddValue("reqSnrKuDb", "Ku-band SNR needed for the fixed mode (dB); default derived from the mode",
+                reqSnrKuDb);
+    cmd.AddValue("dataRateMbps", "Saturating ship->UAV Ku flow rate (Mbps); 0 = original bursts",
+                dataRateMbps);
+    cmd.AddValue("lbandRateMbps", "Saturating ship->next-ship L-band flow rate (Mbps); 0 = off",
+                lbandRateMbps);
     cmd.AddValue("freqL", "L-band centre frequency (GHz)", g_freqLGhz);
     cmd.AddValue("freqKu", "Ku-band centre frequency (GHz)", g_freqKuGhz);
     cmd.AddValue("txL", "L-band ship transmit power (W)", txLW);
@@ -1127,6 +1353,20 @@ main(int argc, char* argv[])
                 g_rampS);
     cmd.AddValue("run", "RNG run number", run);
     cmd.Parse(argc, argv);
+
+    // A non-802.11a standard needs an HT/VHT/HE mode; swap the legacy OFDM default for MCS 7.
+    if (stdL != "80211a" && modeL.rfind("OfdmRate", 0) == 0)
+    {
+        modeL = DefaultModeFor(stdL);
+        NS_LOG_UNCOND("NOTE: --stdL=" << stdL << " with no --modeL: using " << modeL);
+    }
+    if (stdKu != "80211a" && modeKu.rfind("OfdmRate", 0) == 0)
+    {
+        modeKu = DefaultModeFor(stdKu);
+        NS_LOG_UNCOND("NOTE: --stdKu=" << stdKu << " with no --modeKu: using " << modeKu);
+    }
+    const double reqSnrLEff = reqSnrLDb > -999.0 ? reqSnrLDb : MinSnrDbForMode(modeL, reqSnrDb);
+    const double reqSnrKuEff = reqSnrKuDb > -999.0 ? reqSnrKuDb : MinSnrDbForMode(modeKu, reqSnrDb);
     NS_ABORT_MSG_IF(g_seaTempC < -4.0 || g_seaTempC > 40.0,
                     "--seaTempC must be in [-4, 40] (ITU-R P.527-6 validity range)");
     NS_ABORT_MSG_IF(g_salinityPpt < 0.0 || g_salinityPpt > 40.0,
@@ -1263,7 +1503,8 @@ main(int argc, char* argv[])
     // that link, and if two_ray_db and fspl_db differ wildly for a link, that
     // link is deep in an interference lobe (see TwoRaySeaLoss's header comment).
     // 20 MHz noise bandwidth (802.11a) -> thermal noise floor + noise figure.
-    const double noiseDbm = -174.0 + 10.0 * std::log10(20e6) + noiseFigure;
+    const double noiseLDbm = -174.0 + 10.0 * std::log10(widthL * 1e6) + noiseFigure;
+    const double noiseKuDbm = -174.0 + 10.0 * std::log10(widthKu * 1e6) + noiseFigure;
     {
         std::ofstream lb(out + "_linkbudget.csv");
         // point_loss_db is the MEAN Ku pointing loss (0 on L-band); snr_db
@@ -1306,13 +1547,13 @@ main(int argc, char* argv[])
                 const double txDbm = e.isKu ? txKuDbm : txLDbm;
                 const double pointDb = e.isKu ? MeanPointingLossDb() : 0.0;
                 const double rx = txDbm + gainOf(e.i) + gainOf(e.j) - twoRayDb - pointDb;
-                const double snr = rx - noiseDbm;
+                const double snr = rx - (e.isKu ? noiseKuDbm : noiseLDbm);
                 const bool linkTouchesUav = (e.i == nNodes - 1 || e.j == nNodes - 1);
                 const double outage = g_fading
                                           ? FadeOutageProb(KdbToNakagamiM(linkTouchesUav ? g_fadeKsuDb
                                                                                         : g_fadeKssDb),
-                                                           snr - reqSnrDb)
-                                          : (snr < reqSnrDb ? 1.0 : 0.0);
+                                                           snr - (e.isKu ? reqSnrKuEff : reqSnrLEff))
+                                          : (snr < (e.isKu ? reqSnrKuEff : reqSnrLEff) ? 1.0 : 0.0);
                 (e.isKu ? minSnrKu : minSnrL) = std::min(e.isKu ? minSnrKu : minSnrL, snr);
                 lb << k << "," << e.i << "," << e.j << "," << (e.isKu ? "Ku" : "L") << ","
                    << std::fixed << std::setprecision(2) << e.dist / 1000.0 << "," << e.h1 << ","
@@ -1321,7 +1562,7 @@ main(int argc, char* argv[])
                    << "\n";
             }
         }
-        NS_LOG_UNCOND("Noise floor " << noiseDbm << " dBm. Worst-case LoS-link SNR (two-ray): "
+        NS_LOG_UNCOND("Noise floor L " << noiseLDbm << " dBm, Ku " << noiseKuDbm << " dBm. Worst-case LoS-link SNR (two-ray): "
                                      << "L-band " << (minSnrL > 1e8 ? NAN : minSnrL)
                                      << " dB, Ku-band " << (minSnrKu > 1e8 ? NAN : minSnrKu)
                                      << " dB  (see " << out << "_linkbudget.csv)");
@@ -1391,9 +1632,9 @@ main(int argc, char* argv[])
     // Builds a WifiHelper fixed to one 802.11a data rate (no rate adaptation),
     // so throughput/PDR differences reflect the loss model and MAC behaviour,
     // not the rate-control algorithm's own decisions.
-    auto makeWifi = [](const std::string& mode) -> WifiHelper {
+    auto makeWifi = [](const std::string& mode, const std::string& standard) -> WifiHelper {
         WifiHelper w;
-        w.SetStandard(WIFI_STANDARD_80211a);
+        w.SetStandard(StandardFromString(standard));
         w.SetRemoteStationManager("ns3::ConstantRateWifiManager",
                                   "DataMode",
                                   StringValue(mode),
@@ -1405,8 +1646,14 @@ main(int argc, char* argv[])
     // antenna gain to a PHY helper. TxGain/RxGain here are lumped antenna
     // gains; the maritime propagation loss already written into the channel's
     // loss matrix is separate and is not affected by these.
-    auto setPhy = [&](YansWifiPhyHelper& p, Ptr<YansWifiChannel> ch, double txDbm, double gain) {
+    auto setPhy = [&](YansWifiPhyHelper& p, Ptr<YansWifiChannel> ch, double txDbm, double gain,
+                      uint32_t widthMhz, bool setWidth) {
         p.SetChannel(ch);
+        if (setWidth)
+        {
+            // the custom loss model ignores the carrier, so the band label only fixes the PHY layout
+            p.Set("ChannelSettings", StringValue("{0, " + std::to_string(widthMhz) + ", BAND_5GHZ, 0}"));
+        }
         p.Set("TxPowerStart", DoubleValue(txDbm));
         p.Set("TxPowerEnd", DoubleValue(txDbm));
         p.Set("TxGain", DoubleValue(gain));
@@ -1421,10 +1668,10 @@ main(int argc, char* argv[])
     YansWifiPhyHelper phyLUav;   // UAV's L PHY: its own tx power/gain (gainLUav, txLUavW)
     YansWifiPhyHelper phyKuShip;
     YansWifiPhyHelper phyKuUav;  // UAV's Ku PHY has its own antenna gain (gainKuUav != gainKuShip)
-    setPhy(phyLShip, chL, txLDbm, gainL);
-    setPhy(phyLUav, chL, txLUavDbm, gainLUav);
-    setPhy(phyKuShip, chKu, txKuDbm, gainKuShip);
-    setPhy(phyKuUav, chKu, txKuDbm, gainKuUav);
+    setPhy(phyLShip, chL, txLDbm, gainL, widthL, stdL != "80211a" || widthL != 20);
+    setPhy(phyLUav, chL, txLUavDbm, gainLUav, widthL, stdL != "80211a" || widthL != 20);
+    setPhy(phyKuShip, chKu, txKuDbm, gainKuShip, widthKu, stdKu != "80211a" || widthKu != 20);
+    setPhy(phyKuUav, chKu, txKuDbm, gainKuUav, widthKu, stdKu != "80211a" || widthKu != 20);
 
     WifiMacHelper mac;
     mac.SetType("ns3::AdhocWifiMac"); // no AP - every radio is a peer
@@ -1432,10 +1679,10 @@ main(int argc, char* argv[])
     // Both bands are now installed on ships, then the UAV, in that order, so
     // their device/interface indices line up with ships followed by the UAV
     // throughout (index nShips is always the UAV, on either container).
-    NetDeviceContainer devL = makeWifi(modeL).Install(phyLShip, mac, ships);
-    devL.Add(makeWifi(modeL).Install(phyLUav, mac, uavNode));
-    NetDeviceContainer devKu = makeWifi(modeKu).Install(phyKuShip, mac, ships);
-    devKu.Add(makeWifi(modeKu).Install(phyKuUav, mac, uavNode));
+    NetDeviceContainer devL = makeWifi(modeL, stdL).Install(phyLShip, mac, ships);
+    devL.Add(makeWifi(modeL, stdL).Install(phyLUav, mac, uavNode));
+    NetDeviceContainer devKu = makeWifi(modeKu, stdKu).Install(phyKuShip, mac, ships);
+    devKu.Add(makeWifi(modeKu, stdKu).Install(phyKuUav, mac, uavNode));
 
     // ---------------------------------------------------------------- internet
     // Telemetry L-band-only requirement: an earlier revision called
@@ -1482,6 +1729,20 @@ main(int argc, char* argv[])
     Ipv4InterfaceContainer ifL = addr.Assign(devL);
     addr.SetBase("10.1.2.0", "255.255.255.0"); // Ku-band subnet: ships then UAV
     Ipv4InterfaceContainer ifKu = addr.Assign(devKu);
+    // lookup tables for the ETX instrumentation (MAC -> node, interface address -> node/band)
+    g_nShipsGlobal = nShips;
+    g_nodeLAddr.clear();
+    for (uint32_t n = 0; n < nNodes; ++n)
+    {
+        g_macNode[Mac48Address::ConvertFrom(devL.Get(n)->GetAddress())] = n;
+        g_macNode[Mac48Address::ConvertFrom(devKu.Get(n)->GetAddress())] = n;
+        g_addrNode[ifL.GetAddress(n)] = n;
+        g_addrBand[ifL.GetAddress(n)] = 0;
+        g_addrNode[ifKu.GetAddress(n)] = n;
+        g_addrBand[ifKu.GetAddress(n)] = 1;
+        g_nodeLAddr.push_back(ifL.GetAddress(n));
+    }
+    g_uavKuAddr = ifKu.GetAddress(nShips);
     // Both subnets are 10.1.x.NODE+1, so (last octet - 1) recovers the node
     // index from either address. On both containers the UAV is index nShips
     // (last), since both were installed ships-then-UAV.
@@ -1489,6 +1750,7 @@ main(int argc, char* argv[])
     // ------------------------------------------------------------------ traffic
     const uint16_t telemetryPort = 9001;
     const uint16_t dataPort = 9002;
+    const uint16_t lPort = 9003;
 
     // --- Telemetry sinks: every node (ships AND the UAV) listens on the
     // telemetry port, since every ship's telemetry is addressed to all of them.
@@ -1572,6 +1834,19 @@ main(int argc, char* argv[])
     const uint32_t burstPkts = std::max<uint32_t>(1, dataBytes / dataPktSize);
     for (uint32_t s = 0; s < nShips; ++s)
     {
+        if (dataRateMbps > 0.0)
+        {
+            // SATURATING mode: a constant-rate flow for the whole run instead of periodic bursts
+            OnOffHelper on("ns3::UdpSocketFactory", InetSocketAddress(uavKuAddr, dataPort));
+            on.SetAttribute("OnTime", StringValue("ns3::ConstantRandomVariable[Constant=1]"));
+            on.SetAttribute("OffTime", StringValue("ns3::ConstantRandomVariable[Constant=0]"));
+            on.SetAttribute("DataRate", DataRateValue(DataRate(static_cast<uint64_t>(dataRateMbps * 1e6))));
+            on.SetAttribute("PacketSize", UintegerValue(dataPktSize));
+            ApplicationContainer onApp = on.Install(g_nodes.Get(s));
+            onApp.Start(Seconds(warmup + 0.1 * s));
+            onApp.Stop(Seconds(simTime));
+            continue;
+        }
         Ptr<Socket> sock = Socket::CreateSocket(g_nodes.Get(s), UdpSocketFactory::GetTypeId());
         if (sock->Connect(InetSocketAddress(uavKuAddr, dataPort)) != 0)
         {
@@ -1587,6 +1862,29 @@ main(int argc, char* argv[])
                             burstPkts,
                             MilliSeconds(static_cast<int64_t>(dataPktGapMs)),
                             Seconds(dataPeriodMin * 60.0));
+    }
+
+    // --- L-band saturating flows: ship s streams to ship (s+1) mod nShips on the L-band address.
+    const uint32_t lPktSize = 1400;
+    if (lbandRateMbps > 0.0 && nShips >= 2)
+    {
+        for (uint32_t s = 0; s < nShips; ++s)
+        {
+            PacketSinkHelper sink("ns3::UdpSocketFactory", InetSocketAddress(Ipv4Address::GetAny(), lPort));
+            sink.Install(g_nodes.Get(s)).Start(Seconds(0.0));
+        }
+        for (uint32_t s = 0; s < nShips; ++s)
+        {
+            OnOffHelper on("ns3::UdpSocketFactory",
+                           InetSocketAddress(ifL.GetAddress((s + 1) % nShips), lPort));
+            on.SetAttribute("OnTime", StringValue("ns3::ConstantRandomVariable[Constant=1]"));
+            on.SetAttribute("OffTime", StringValue("ns3::ConstantRandomVariable[Constant=0]"));
+            on.SetAttribute("DataRate", DataRateValue(DataRate(static_cast<uint64_t>(lbandRateMbps * 1e6))));
+            on.SetAttribute("PacketSize", UintegerValue(lPktSize));
+            ApplicationContainer onApp = on.Install(g_nodes.Get(s));
+            onApp.Start(Seconds(warmup + 0.1 * s));
+            onApp.Stop(Seconds(simTime));
+        }
     }
 
     // --------------------------------------------------- topology schedule
@@ -1628,6 +1926,31 @@ main(int argc, char* argv[])
     {
         NS_LOG_UNCOND("NOTE: MAC failure traces could not be connected on this ns-3 version; "
                       "*_mac.csv will read zero and is NOT evidence of a loss-free channel.");
+    }
+
+    // ETX: attempts from the PHY, successes from the MAC (see the ETX INSTRUMENTATION comment).
+    const bool etxAckOk = Config::ConnectFailSafe(
+        "/NodeList/*/DeviceList/*/$ns3::WifiNetDevice/Mac/AckedMpdu", MakeCallback(&OnAckedMpdu));
+    const bool etxTxOk =
+        Config::ConnectFailSafe("/NodeList/*/DeviceList/*/$ns3::WifiNetDevice/Phys/*/PhyTxPsduBegin",
+                                MakeCallback(&OnPhyTxPsduBegin)) ||
+        Config::ConnectFailSafe("/NodeList/*/DeviceList/*/$ns3::WifiNetDevice/Phy/PhyTxPsduBegin",
+                                MakeCallback(&OnPhyTxPsduBegin));
+    const bool g_etxTraceOk = etxAckOk && etxTxOk && routing == "olsr";
+    if (!g_etxTraceOk)
+    {
+        NS_LOG_UNCOND("NOTE: ETX instrumentation disabled (needs --routing=olsr and the AckedMpdu / "
+                      "PhyTxPsduBegin traces); no *_etx.csv will be written.");
+    }
+    else
+    {
+        for (uint32_t k = 0; k < nSteps; ++k)
+        {
+            if (stepTime[k] + 60.0 < simTime)
+            {
+                Simulator::Schedule(Seconds(stepTime[k] + 60.0), &SampleRoutes);
+            }
+        }
     }
 
     FlowMonitorHelper fmh;
@@ -1736,6 +2059,10 @@ main(int argc, char* argv[])
         a.fwd += kv.second.timesForwarded;
         a.delay += kv.second.delaySum.GetSeconds();
     }
+    auto rateOfferedPkts = [&](double mbps, uint32_t pktBytes, double startS) -> uint64_t {
+        const double active = simTime - startS;
+        return active > 0 ? static_cast<uint64_t>(std::floor(mbps * 1e6 * active / (8.0 * pktBytes))) : 0;
+    };
     std::ofstream df(out + "_datatransfer.csv");
     df << "ship,offered_pkts,sent_pkts,noroute_pkts,rx_pkts,pdr,mean_delay_ms,mean_hops,"
           "throughput_kbps\n";
@@ -1748,7 +2075,9 @@ main(int argc, char* argv[])
         const DataAgg& a =
             dataAgg.count(static_cast<int>(s)) ? dataAgg[static_cast<int>(s)] : DataAgg{};
         const uint64_t dataOfferedPkts =
-            roundsFor(warmup + s * dataPeriodS / nShips, dataPeriodS) * burstPkts;
+            dataRateMbps > 0.0
+                ? rateOfferedPkts(dataRateMbps, dataPktSize, warmup + 0.1 * s)
+                : roundsFor(warmup + s * dataPeriodS / nShips, dataPeriodS) * burstPkts;
         const uint64_t noRoute = dataOfferedPkts > a.tx ? dataOfferedPkts - a.tx : 0;
         const double pdr = dataOfferedPkts ? double(a.rx) / dataOfferedPkts : 0.0;
         const double dms = a.rx ? a.delay * 1000.0 / a.rx : 0.0;
@@ -1763,6 +2092,101 @@ main(int argc, char* argv[])
         dataTotFwd += a.fwd;
     }
     df.close();
+
+    // --- L-BAND SATURATING FLOWS -> <out>_lthroughput.csv (same columns as _datatransfer.csv) -----
+    if (lbandRateMbps > 0.0 && nShips >= 2)
+    {
+        std::map<int, DataAgg> lAgg;
+        for (const auto& kv : mon->GetFlowStats())
+        {
+            auto t = cls->FindFlow(kv.first);
+            if (t.destinationPort != lPort)
+            {
+                continue;
+            }
+            DataAgg& a = lAgg[(t.sourceAddress.Get() & 0xFF) - 1];
+            a.tx += kv.second.txPackets;
+            a.rx += kv.second.rxPackets;
+            a.rxBytes += kv.second.rxBytes;
+            a.fwd += kv.second.timesForwarded;
+            a.delay += kv.second.delaySum.GetSeconds();
+        }
+        std::ofstream lf(out + "_lthroughput.csv");
+        lf << "ship,offered_pkts,sent_pkts,noroute_pkts,rx_pkts,pdr,mean_delay_ms,mean_hops,"
+              "throughput_kbps\n";
+        for (uint32_t s = 0; s < nShips; ++s)
+        {
+            const DataAgg& a = lAgg.count(static_cast<int>(s)) ? lAgg[static_cast<int>(s)] : DataAgg{};
+            const uint64_t off = rateOfferedPkts(lbandRateMbps, lPktSize, warmup + 0.1 * s);
+            lf << s << "," << off << "," << a.tx << "," << (off > a.tx ? off - a.tx : 0) << "," << a.rx << ","
+               << std::fixed << std::setprecision(4) << (off ? double(a.rx) / off : 0.0) << ","
+               << (a.rx ? a.delay * 1000.0 / a.rx : 0.0) << "," << (a.rx ? 1.0 + double(a.fwd) / a.rx : 0.0)
+               << "," << a.rxBytes * 8.0 / avail / 1000.0 << "\n";
+        }
+    }
+
+    // --- ETX -> <out>_linketx.csv (per link) and <out>_etx.csv (per route) ------------------------
+    if (g_etxTraceOk)
+    {
+        const double inf = std::numeric_limits<double>::infinity();
+        std::ofstream lk(out + "_linketx.csv");
+        lk << "tx,rx,band,attempts,acked,etx\n";
+        for (const auto& kv : g_linkCount)
+        {
+            lk << kv.first.tx << "," << kv.first.rx << "," << (kv.first.band ? "Ku" : "L") << ","
+               << kv.second.attempts << "," << kv.second.acked << "," << std::fixed << std::setprecision(4)
+               << (kv.second.acked ? double(kv.second.attempts) / kv.second.acked : inf) << "\n";
+        }
+        struct RouteAgg
+        {
+            double sum = 0.0;
+            double hops = 0.0;
+            uint32_t measured = 0;
+            uint32_t noRoute = 0;
+            uint32_t unmeasured = 0;
+        };
+        std::map<std::tuple<uint32_t, uint32_t, std::string>, RouteAgg> agg;
+        for (const auto& r : g_routeSamples)
+        {
+            RouteAgg& a = agg[std::make_tuple(r.src, r.dst, r.cls)];
+            if (r.noRoute)
+            {
+                a.noRoute++;
+                continue;
+            }
+            double etx = 0.0;
+            bool ok = true;
+            for (const auto& l : r.path)
+            {
+                const auto it = g_linkCount.find(l);
+                if (it == g_linkCount.end() || it->second.attempts == 0)
+                {
+                    ok = false; // that link never carried a data frame, so its ETX is unknown
+                    break;
+                }
+                etx += it->second.acked ? double(it->second.attempts) / it->second.acked : inf;
+            }
+            if (!ok)
+            {
+                a.unmeasured++;
+                continue;
+            }
+            a.measured++;
+            a.sum += etx;
+            a.hops += r.path.size();
+        }
+        std::ofstream ef(out + "_etx.csv");
+        ef << "src,dst,class,hops,samples,no_route_samples,unmeasured_samples,route_etx\n";
+        for (const auto& kv : agg)
+        {
+            const RouteAgg& a = kv.second;
+            const double v = a.measured ? a.sum / a.measured : (a.noRoute ? inf : std::nan(""));
+            ef << std::get<0>(kv.first) << "," << std::get<1>(kv.first) << "," << std::get<2>(kv.first) << ","
+               << std::fixed << std::setprecision(3) << (a.measured ? a.hops / a.measured : 0.0) << ","
+               << a.measured << "," << a.noRoute << "," << a.unmeasured << "," << std::setprecision(4) << v
+               << "\n";
+        }
+    }
 
     // --- Per-step breakdown (telemetry only). tx/rx come from the manual
     // per-step counters, since FlowMonitor has no time axis. Link counts come

@@ -1,0 +1,1 @@
+N=50 SEED=1000 ARMS=midpoint de10 grid

@@ -1,0 +1,314 @@
+Successfully loaded DEM file: /home/user/ns-3-dev/flying-pigs/simulation/output_hh.tif
+DEM CRS: EPSG:4326
+DEM bounds: BoundingBox(left=102.9998611, bottom=0.5001388999999961, right=104.4998611, top=2.000138899999996)
+DEM resolution: (0.0002777777777777778, 0.0002777777777777778)
+Placed 5 convoy ships over water (rejected 7 land candidates, 12 total attempts).
+[1/50] seed=1000 midpoint: score=       90.52 link=  90.52 km    0.03s  1 evals
+[1/50] seed=1000     grid: score=       85.71 link=  85.71 km   15.68s  406 evals
+[1/50] seed=1000      de1: score=       90.52 link=  90.52 km    1.02s  30 evals
+[1/50] seed=1000     de10: score=       83.55 link=  83.55 km    7.74s  265 evals
+[1/50] seed=1000     de60: score=       83.55 link=  83.55 km    7.80s  265 evals
+Placed 5 convoy ships over water (rejected 3 land candidates, 8 total attempts).
+[2/50] seed=1001 midpoint: score=      125.37 link= 125.37 km    0.03s  1 evals
+[2/50] seed=1001     grid: score=      119.36 link= 119.36 km   14.65s  406 evals
+[2/50] seed=1001      de1: score=      122.17 link= 122.17 km    1.01s  30 evals
+[2/50] seed=1001     de10: score=      116.91 link= 116.91 km    6.32s  217 evals
+[2/50] seed=1001     de60: score=      116.91 link= 116.91 km    6.39s  217 evals
+Placed 5 convoy ships over water (rejected 1 land candidates, 6 total attempts).
+[3/50] seed=1002 midpoint: score=       69.22 link=  69.22 km    0.03s  1 evals
+[3/50] seed=1002     grid: score=       66.98 link=  66.98 km   12.65s  406 evals
+[3/50] seed=1002      de1: score=       69.22 link=  69.22 km    1.03s  34 evals
+[3/50] seed=1002     de10: score=       66.98 link=  66.98 km    4.17s  145 evals
+[3/50] seed=1002     de60: score=       66.98 link=  66.98 km    4.21s  145 evals
+Placed 5 convoy ships over water (rejected 2 land candidates, 7 total attempts).
+[4/50] seed=1003 midpoint: score=      151.76 link= 151.76 km    0.03s  1 evals
+[4/50] seed=1003     grid: score=      148.72 link= 148.72 km   16.44s  406 evals
+[4/50] seed=1003      de1: score=      150.07 link= 150.07 km    1.01s  25 evals
+[4/50] seed=1003     de10: score=      147.60 link= 147.60 km    5.66s  169 evals
+[4/50] seed=1003     de60: score=      147.60 link= 147.60 km    5.67s  169 evals
+Placed 5 convoy ships over water (rejected 4 land candidates, 9 total attempts).
+[5/50] seed=1004 midpoint: score=      127.97 link= 127.97 km    0.02s  1 evals
+[5/50] seed=1004     grid: score=      126.73 link= 126.73 km   12.69s  406 evals
+[5/50] seed=1004      de1: score=      127.97 link= 127.97 km    1.01s  36 evals
+[5/50] seed=1004     de10: score=      126.70 link= 126.70 km    4.29s  169 evals
+[5/50] seed=1004     de60: score=      126.70 link= 126.70 km    4.28s  169 evals
+Placed 5 convoy ships over water (rejected 4 land candidates, 9 total attempts).
+[6/50] seed=1005 midpoint: score=      116.21 link= 116.21 km    0.02s  1 evals
+[6/50] seed=1005     grid: score=      107.03 link= 107.03 km   13.80s  406 evals
+[6/50] seed=1005      de1: score=      114.45 link= 114.45 km    1.03s  32 evals
+[6/50] seed=1005     de10: score=      106.80 link= 106.80 km    5.40s  193 evals
+[6/50] seed=1005     de60: score=      106.80 link= 106.80 km    5.34s  193 evals
+Placed 5 convoy ships over water (rejected 5 land candidates, 10 total attempts).
+[7/50] seed=1006 midpoint: score=      140.51 link= 140.51 km    0.03s  1 evals
+[7/50] seed=1006     grid: score=      133.40 link= 133.40 km   16.33s  406 evals
+[7/50] seed=1006      de1: score=      140.51 link= 140.51 km    1.02s  26 evals
+[7/50] seed=1006     de10: score=      132.04 link= 132.04 km    7.01s  217 evals
+[7/50] seed=1006     de60: score=      132.04 link= 132.04 km    6.84s  217 evals
+Placed 5 convoy ships over water (rejected 2 land candidates, 7 total attempts).
+[8/50] seed=1007 midpoint: score=      131.92 link= 131.92 km    0.03s  1 evals
+[8/50] seed=1007     grid: score=      129.19 link= 129.19 km   16.57s  406 evals
+[8/50] seed=1007      de1: score=      131.92 link= 131.92 km    1.04s  27 evals
+[8/50] seed=1007     de10: score=      129.29 link= 129.29 km    6.10s  169 evals
+[8/50] seed=1007     de60: score=      129.29 link= 129.29 km    6.11s  169 evals
+Placed 5 convoy ships over water (rejected 7 land candidates, 12 total attempts).
+[9/50] seed=1008 midpoint: score=      104.53 link= 104.53 km    0.03s  1 evals
+[9/50] seed=1008     grid: score=      102.41 link= 102.41 km   16.05s  406 evals
+[9/50] seed=1008      de1: score=      104.53 link= 104.53 km    1.00s  26 evals
+[9/50] seed=1008     de10: score=      102.59 link= 102.59 km    5.38s  169 evals
+[9/50] seed=1008     de60: score=      102.59 link= 102.59 km    5.26s  169 evals
+Placed 5 convoy ships over water (rejected 5 land candidates, 10 total attempts).
+[10/50] seed=1009 midpoint: score=      107.40 link= 107.40 km    0.03s  1 evals
+[10/50] seed=1009     grid: score=      103.57 link= 103.57 km   15.58s  406 evals
+[10/50] seed=1009      de1: score=      107.40 link= 107.40 km    1.04s  28 evals
+[10/50] seed=1009     de10: score=      103.44 link= 103.44 km    6.13s  193 evals
+[10/50] seed=1009     de60: score=      103.44 link= 103.44 km    6.53s  193 evals
+Placed 5 convoy ships over water (rejected 4 land candidates, 9 total attempts).
+[11/50] seed=1010 midpoint: score=       85.73 link=  85.73 km    0.02s  1 evals
+[11/50] seed=1010     grid: score=       79.29 link=  79.29 km   12.74s  406 evals
+[11/50] seed=1010      de1: score=       84.75 link=  84.75 km    1.02s  35 evals
+[11/50] seed=1010     de10: score=       77.49 link=  77.49 km    5.71s  241 evals
+[11/50] seed=1010     de60: score=       77.49 link=  77.49 km    5.61s  241 evals
+Placed 5 convoy ships over water (rejected 8 land candidates, 13 total attempts).
+[12/50] seed=1011 midpoint: score=      136.52 link= 136.52 km    0.03s  1 evals
+[12/50] seed=1011     grid: score=      135.54 link= 135.54 km   13.30s  406 evals
+[12/50] seed=1011      de1: score=      136.52 link= 136.52 km    1.03s  32 evals
+[12/50] seed=1011     de10: score=      136.04 link= 136.04 km    4.30s  145 evals
+[12/50] seed=1011     de60: score=      136.04 link= 136.04 km    4.17s  145 evals
+Placed 5 convoy ships over water (rejected 0 land candidates, 5 total attempts).
+[13/50] seed=1012 midpoint: score=      116.89 link= 116.89 km    0.03s  1 evals
+[13/50] seed=1012     grid: score=      116.53 link= 116.53 km   17.41s  406 evals
+[13/50] seed=1012      de1: score=      116.89 link= 116.89 km    1.04s  25 evals
+[13/50] seed=1012     de10: score=      113.80 link= 113.80 km    8.71s  241 evals
+[13/50] seed=1012     de60: score=      113.80 link= 113.80 km    8.49s  241 evals
+Placed 5 convoy ships over water (rejected 5 land candidates, 10 total attempts).
+[14/50] seed=1013 midpoint: score=      109.71 link= 109.71 km    0.02s  1 evals
+[14/50] seed=1013     grid: score=      107.51 link= 107.51 km   12.64s  406 evals
+[14/50] seed=1013      de1: score=      109.71 link= 109.71 km    1.01s  34 evals
+[14/50] seed=1013     de10: score=      107.89 link= 107.89 km    3.85s  145 evals
+[14/50] seed=1013     de60: score=      107.89 link= 107.89 km    3.87s  145 evals
+Placed 5 convoy ships over water (rejected 5 land candidates, 10 total attempts).
+[15/50] seed=1014 midpoint: score=       84.32 link=  84.32 km    0.03s  1 evals
+[15/50] seed=1014     grid: score=       81.70 link=  81.70 km   16.40s  406 evals
+[15/50] seed=1014      de1: score=       84.32 link=  84.32 km    1.01s  25 evals
+[15/50] seed=1014     de10: score=       81.77 link=  81.77 km    6.85s  193 evals
+[15/50] seed=1014     de60: score=       81.77 link=  81.77 km    6.81s  193 evals
+Placed 5 convoy ships over water (rejected 12 land candidates, 17 total attempts).
+[16/50] seed=1015 midpoint: score=      100.97 link= 100.97 km    0.03s  1 evals
+[16/50] seed=1015     grid: score=       98.41 link=  98.41 km   15.52s  406 evals
+[16/50] seed=1015      de1: score=      100.97 link= 100.97 km    1.03s  28 evals
+[16/50] seed=1015     de10: score=       97.33 link=  97.33 km    7.41s  241 evals
+[16/50] seed=1015     de60: score=       97.33 link=  97.33 km    7.33s  241 evals
+Placed 5 convoy ships over water (rejected 3 land candidates, 8 total attempts).
+[17/50] seed=1016 midpoint: score=       88.49 link=  88.49 km    0.02s  1 evals
+[17/50] seed=1016     grid: score=       75.76 link=  75.76 km   12.86s  406 evals
+[17/50] seed=1016      de1: score=       86.07 link=  86.07 km    1.00s  33 evals
+[17/50] seed=1016     de10: score=       74.47 link=  74.47 km    5.83s  265 evals
+[17/50] seed=1016     de60: score=       74.47 link=  74.47 km    5.90s  265 evals
+Placed 5 convoy ships over water (rejected 9 land candidates, 14 total attempts).
+[18/50] seed=1017 midpoint: score=      114.16 link= 114.16 km    0.03s  1 evals
+[18/50] seed=1017     grid: score=      103.48 link= 103.48 km   15.95s  406 evals
+[18/50] seed=1017      de1: score=      107.11 link= 107.11 km    1.01s  28 evals
+[18/50] seed=1017     de10: score=      103.41 link= 103.41 km    6.16s  217 evals
+[18/50] seed=1017     de60: score=      103.41 link= 103.41 km    6.17s  217 evals
+Placed 5 convoy ships over water (rejected 0 land candidates, 5 total attempts).
+[19/50] seed=1018 midpoint: score=      117.86 link= 117.86 km    0.03s  1 evals
+[19/50] seed=1018     grid: score=      113.05 link= 113.05 km   16.68s  406 evals
+[19/50] seed=1018      de1: score=      114.76 link= 114.76 km    1.02s  25 evals
+[19/50] seed=1018     de10: score=      112.69 link= 112.69 km    5.64s  169 evals
+[19/50] seed=1018     de60: score=      112.69 link= 112.69 km    5.60s  169 evals
+Placed 5 convoy ships over water (rejected 5 land candidates, 10 total attempts).
+[20/50] seed=1019 midpoint: score=      131.38 link= 131.38 km    0.03s  1 evals
+[20/50] seed=1019     grid: score=      124.38 link= 124.38 km   16.56s  406 evals
+[20/50] seed=1019      de1: score=      131.38 link= 131.38 km    1.03s  27 evals
+[20/50] seed=1019     de10: score=      122.75 link= 122.75 km    5.33s  169 evals
+[20/50] seed=1019     de60: score=      122.75 link= 122.75 km    5.21s  169 evals
+Placed 5 convoy ships over water (rejected 2 land candidates, 7 total attempts).
+[21/50] seed=1020 midpoint: score=      134.81 link= 134.81 km    0.03s  1 evals
+[21/50] seed=1020     grid: score=      133.68 link= 133.68 km   15.78s  406 evals
+[21/50] seed=1020      de1: score=      134.81 link= 134.81 km    1.02s  27 evals
+[21/50] seed=1020     de10: score=      133.84 link= 133.84 km    5.10s  145 evals
+[21/50] seed=1020     de60: score=      133.84 link= 133.84 km    5.54s  145 evals
+Placed 5 convoy ships over water (rejected 4 land candidates, 9 total attempts).
+[22/50] seed=1021 midpoint: score=      130.98 link= 130.98 km    0.04s  1 evals
+[22/50] seed=1021     grid: score=      129.74 link= 129.74 km   16.83s  406 evals
+[22/50] seed=1021      de1: score=      130.98 link= 130.98 km    1.01s  26 evals
+[22/50] seed=1021     de10: score=      129.94 link= 129.94 km    5.68s  169 evals
+[22/50] seed=1021     de60: score=      129.94 link= 129.94 km    5.71s  169 evals
+Placed 5 convoy ships over water (rejected 1 land candidates, 6 total attempts).
+[23/50] seed=1022 midpoint: score=      140.81 link= 140.81 km    0.03s  1 evals
+[23/50] seed=1022     grid: score=      130.39 link= 130.39 km   14.18s  406 evals
+[23/50] seed=1022      de1: score=      135.52 link= 135.52 km    1.02s  29 evals
+[23/50] seed=1022     de10: score=      129.61 link= 129.61 km    4.37s  145 evals
+[23/50] seed=1022     de60: score=      129.61 link= 129.61 km    4.34s  145 evals
+Placed 5 convoy ships over water (rejected 10 land candidates, 15 total attempts).
+[24/50] seed=1023 midpoint: score=       98.42 link=  98.42 km    0.03s  1 evals
+[24/50] seed=1023     grid: score=       95.58 link=  95.58 km   15.05s  406 evals
+[24/50] seed=1023      de1: score=       98.42 link=  98.42 km    1.00s  28 evals
+[24/50] seed=1023     de10: score=       95.18 link=  95.18 km    7.07s  241 evals
+[24/50] seed=1023     de60: score=       95.18 link=  95.18 km    6.89s  241 evals
+Placed 5 convoy ships over water (rejected 11 land candidates, 16 total attempts).
+[25/50] seed=1024 midpoint: score=      103.07 link= 103.07 km    0.03s  1 evals
+[25/50] seed=1024     grid: score=      100.90 link= 100.90 km   16.57s  406 evals
+[25/50] seed=1024      de1: score=      103.07 link= 103.07 km    1.02s  26 evals
+[25/50] seed=1024     de10: score=       99.59 link=  99.59 km    7.53s  217 evals
+[25/50] seed=1024     de60: score=       99.59 link=  99.59 km    7.51s  217 evals
+Placed 5 convoy ships over water (rejected 1 land candidates, 6 total attempts).
+[26/50] seed=1025 midpoint: score=       92.71 link=  92.71 km    0.03s  1 evals
+[26/50] seed=1025     grid: score=       90.61 link=  90.61 km   16.43s  406 evals
+[26/50] seed=1025      de1: score=       92.71 link=  92.71 km    1.02s  28 evals
+[26/50] seed=1025     de10: score=       90.63 link=  90.63 km    5.38s  169 evals
+[26/50] seed=1025     de60: score=       90.63 link=  90.63 km    5.34s  169 evals
+Placed 5 convoy ships over water (rejected 2 land candidates, 7 total attempts).
+[27/50] seed=1026 midpoint: score=      105.19 link= 105.19 km    0.03s  1 evals
+[27/50] seed=1026     grid: score=      103.04 link= 103.04 km   16.92s  406 evals
+[27/50] seed=1026      de1: score=      105.19 link= 105.19 km    1.02s  24 evals
+[27/50] seed=1026     de10: score=      103.05 link= 103.05 km    7.54s  193 evals
+[27/50] seed=1026     de60: score=      103.05 link= 103.05 km    7.50s  193 evals
+Placed 5 convoy ships over water (rejected 9 land candidates, 14 total attempts).
+[28/50] seed=1027 midpoint: score=      119.51 link= 119.51 km    0.02s  1 evals
+[28/50] seed=1027     grid: score=      118.15 link= 118.15 km   12.72s  406 evals
+[28/50] seed=1027      de1: score=      119.40 link= 119.40 km    1.02s  35 evals
+[28/50] seed=1027     de10: score=      117.65 link= 117.65 km    3.67s  145 evals
+[28/50] seed=1027     de60: score=      117.65 link= 117.65 km    3.68s  145 evals
+Placed 5 convoy ships over water (rejected 4 land candidates, 9 total attempts).
+[29/50] seed=1028 midpoint: score=      115.12 link= 115.12 km    0.03s  1 evals
+[29/50] seed=1028     grid: score=      114.14 link= 114.14 km   15.35s  406 evals
+[29/50] seed=1028      de1: score=      115.12 link= 115.12 km    1.02s  26 evals
+[29/50] seed=1028     de10: score=      114.36 link= 114.36 km    4.24s  121 evals
+[29/50] seed=1028     de60: score=      114.36 link= 114.36 km    4.27s  121 evals
+Placed 5 convoy ships over water (rejected 12 land candidates, 17 total attempts).
+[30/50] seed=1029 midpoint: score=       81.01 link=  81.01 km    0.03s  1 evals
+[30/50] seed=1029     grid: score=       78.08 link=  78.08 km   15.98s  406 evals
+[30/50] seed=1029      de1: score=       81.01 link=  81.01 km    1.02s  26 evals
+[30/50] seed=1029     de10: score=       77.82 link=  77.82 km    6.00s  169 evals
+[30/50] seed=1029     de60: score=       77.82 link=  77.82 km    5.89s  169 evals
+Placed 5 convoy ships over water (rejected 3 land candidates, 8 total attempts).
+[31/50] seed=1030 midpoint: score=      132.89 link= 132.89 km    0.03s  1 evals
+[31/50] seed=1030     grid: score=      128.94 link= 128.94 km   17.49s  406 evals
+[31/50] seed=1030      de1: score=      132.89 link= 132.89 km    1.03s  25 evals
+[31/50] seed=1030     de10: score=      127.21 link= 127.21 km    6.71s  193 evals
+[31/50] seed=1030     de60: score=      127.21 link= 127.21 km    6.93s  193 evals
+Placed 5 convoy ships over water (rejected 3 land candidates, 8 total attempts).
+[32/50] seed=1031 midpoint: score=       90.68 link=  90.68 km    0.04s  1 evals
+[32/50] seed=1031     grid: score=       88.76 link=  88.76 km   17.15s  406 evals
+[32/50] seed=1031      de1: score=       90.68 link=  90.68 km    1.02s  25 evals
+[32/50] seed=1031     de10: score=       88.19 link=  88.19 km    8.10s  217 evals
+[32/50] seed=1031     de60: score=       88.19 link=  88.19 km    7.83s  217 evals
+Placed 5 convoy ships over water (rejected 4 land candidates, 9 total attempts).
+[33/50] seed=1032 midpoint: score=       82.85 link=  82.85 km    0.02s  1 evals
+[33/50] seed=1032     grid: score=       77.51 link=  77.51 km   13.53s  406 evals
+[33/50] seed=1032      de1: score=       82.85 link=  82.85 km    1.02s  33 evals
+[33/50] seed=1032     de10: score=       77.53 link=  77.53 km    8.10s  313 evals
+[33/50] seed=1032     de60: score=       77.53 link=  77.53 km    8.25s  313 evals
+Placed 5 convoy ships over water (rejected 3 land candidates, 8 total attempts).
+[34/50] seed=1033 midpoint: score=      106.99 link= 106.99 km    0.03s  1 evals
+[34/50] seed=1033     grid: score=      106.99 link= 106.99 km   17.18s  406 evals
+[34/50] seed=1033      de1: score=      106.99 link= 106.99 km    1.01s  25 evals
+[34/50] seed=1033     de10: score=      102.22 link= 102.22 km    8.89s  289 evals
+[34/50] seed=1033     de60: score=      102.22 link= 102.22 km    8.76s  289 evals
+Placed 5 convoy ships over water (rejected 7 land candidates, 12 total attempts).
+[35/50] seed=1034 midpoint: score=      121.65 link= 121.65 km    0.03s  1 evals
+[35/50] seed=1034     grid: score=      103.66 link= 103.66 km   16.01s  406 evals
+[35/50] seed=1034      de1: score=      118.11 link= 118.11 km    1.05s  26 evals
+[35/50] seed=1034     de10: score=       97.88 link=  97.88 km    9.76s  337 evals
+[35/50] seed=1034     de60: score=       97.88 link=  97.88 km    9.87s  337 evals
+Placed 5 convoy ships over water (rejected 6 land candidates, 11 total attempts).
+[36/50] seed=1035 midpoint: score=      101.81 link= 101.81 km    0.03s  1 evals
+[36/50] seed=1035     grid: score=       97.47 link=  97.47 km   14.99s  406 evals
+[36/50] seed=1035      de1: score=      101.81 link= 101.81 km    1.02s  30 evals
+[36/50] seed=1035     de10: score=       97.53 link=  97.53 km    5.02s  169 evals
+[36/50] seed=1035     de60: score=       97.53 link=  97.53 km    5.10s  169 evals
+Placed 5 convoy ships over water (rejected 4 land candidates, 9 total attempts).
+[37/50] seed=1036 midpoint: score=      104.65 link= 104.65 km    0.03s  1 evals
+[37/50] seed=1036     grid: score=       97.43 link=  97.43 km   16.15s  406 evals
+[37/50] seed=1036      de1: score=      103.34 link= 103.34 km    1.02s  26 evals
+[37/50] seed=1036     de10: score=       95.85 link=  95.85 km   10.02s  317 evals
+[37/50] seed=1036     de60: score=       95.83 link=  95.83 km   10.65s  337 evals
+Placed 5 convoy ships over water (rejected 1 land candidates, 6 total attempts).
+[38/50] seed=1037 midpoint: score=      108.63 link= 108.63 km    0.03s  1 evals
+[38/50] seed=1037     grid: score=      105.10 link= 105.10 km   15.52s  406 evals
+[38/50] seed=1037      de1: score=      108.63 link= 108.63 km    1.01s  28 evals
+[38/50] seed=1037     de10: score=      104.30 link= 104.30 km    6.50s  217 evals
+[38/50] seed=1037     de60: score=      104.30 link= 104.30 km    6.48s  217 evals
+Placed 5 convoy ships over water (rejected 5 land candidates, 10 total attempts).
+[39/50] seed=1038 midpoint: score=      143.38 link= 143.38 km    0.03s  1 evals
+[39/50] seed=1038     grid: score=      142.93 link= 142.93 km   13.74s  406 evals
+[39/50] seed=1038      de1: score=      143.38 link= 143.38 km    1.03s  32 evals
+[39/50] seed=1038     de10: score=      142.22 link= 142.22 km    4.91s  169 evals
+[39/50] seed=1038     de60: score=      142.22 link= 142.22 km    4.95s  169 evals
+Placed 5 convoy ships over water (rejected 4 land candidates, 9 total attempts).
+[40/50] seed=1039 midpoint: score=       80.49 link=  80.49 km    0.03s  1 evals
+[40/50] seed=1039     grid: score=       75.96 link=  75.96 km   14.62s  406 evals
+[40/50] seed=1039      de1: score=       77.82 link=  77.82 km    1.00s  29 evals
+[40/50] seed=1039     de10: score=       75.80 link=  75.80 km    5.51s  169 evals
+[40/50] seed=1039     de60: score=       75.80 link=  75.80 km    5.42s  169 evals
+Placed 5 convoy ships over water (rejected 8 land candidates, 13 total attempts).
+[41/50] seed=1040 midpoint: score=      110.51 link= 110.51 km    0.03s  1 evals
+[41/50] seed=1040     grid: score=       95.37 link=  95.37 km   15.76s  406 evals
+[41/50] seed=1040      de1: score=      107.97 link= 107.97 km    1.02s  28 evals
+[41/50] seed=1040     de10: score=       94.90 link=  94.90 km    6.66s  241 evals
+[41/50] seed=1040     de60: score=       94.90 link=  94.90 km    6.81s  241 evals
+Placed 5 convoy ships over water (rejected 1 land candidates, 6 total attempts).
+[42/50] seed=1041 midpoint: score=      147.39 link= 147.39 km    0.03s  1 evals
+[42/50] seed=1041     grid: score=      142.01 link= 142.01 km   19.15s  406 evals
+[42/50] seed=1041      de1: score=      147.39 link= 147.39 km    1.03s  24 evals
+[42/50] seed=1041     de10: score=      141.17 link= 141.17 km    9.30s  265 evals
+[42/50] seed=1041     de60: score=      141.17 link= 141.17 km    9.31s  265 evals
+Placed 5 convoy ships over water (rejected 13 land candidates, 18 total attempts).
+[43/50] seed=1042 midpoint: score=      108.90 link= 108.90 km    0.03s  1 evals
+[43/50] seed=1042     grid: score=      107.43 link= 107.43 km   16.22s  406 evals
+[43/50] seed=1042      de1: score=      108.90 link= 108.90 km    1.03s  27 evals
+[43/50] seed=1042     de10: score=      106.76 link= 106.76 km    5.82s  169 evals
+[43/50] seed=1042     de60: score=      106.76 link= 106.76 km    5.85s  169 evals
+Placed 5 convoy ships over water (rejected 1 land candidates, 6 total attempts).
+[44/50] seed=1043 midpoint: score=      101.36 link= 101.36 km    0.02s  1 evals
+[44/50] seed=1043     grid: score=       90.57 link=  90.57 km    9.97s  406 evals
+[44/50] seed=1043      de1: score=       95.23 link=  95.23 km    1.02s  44 evals
+[44/50] seed=1043     de10: score=       90.37 link=  90.37 km    4.58s  241 evals
+[44/50] seed=1043     de60: score=       90.37 link=  90.37 km    4.67s  241 evals
+Placed 5 convoy ships over water (rejected 3 land candidates, 8 total attempts).
+[45/50] seed=1044 midpoint: score=      132.15 link= 132.15 km    0.03s  1 evals
+[45/50] seed=1044     grid: score=      130.11 link= 130.11 km   13.03s  406 evals
+[45/50] seed=1044      de1: score=      132.15 link= 132.15 km    1.01s  33 evals
+[45/50] seed=1044     de10: score=      129.85 link= 129.85 km    4.19s  145 evals
+[45/50] seed=1044     de60: score=      129.85 link= 129.85 km    4.23s  145 evals
+Placed 5 convoy ships over water (rejected 1 land candidates, 6 total attempts).
+[46/50] seed=1045 midpoint: score=      148.11 link= 148.11 km    0.03s  1 evals
+[46/50] seed=1045     grid: score=      147.41 link= 147.41 km   16.07s  406 evals
+[46/50] seed=1045      de1: score=      148.11 link= 148.11 km    1.02s  27 evals
+[46/50] seed=1045     de10: score=      146.75 link= 146.75 km    4.69s  145 evals
+[46/50] seed=1045     de60: score=      146.75 link= 146.75 km    4.39s  145 evals
+Placed 5 convoy ships over water (rejected 7 land candidates, 12 total attempts).
+[47/50] seed=1046 midpoint: score=      110.51 link= 110.51 km    0.03s  1 evals
+[47/50] seed=1046     grid: score=      108.53 link= 108.53 km   16.02s  406 evals
+[47/50] seed=1046      de1: score=      110.51 link= 110.51 km    1.02s  27 evals
+[47/50] seed=1046     de10: score=      107.83 link= 107.83 km    6.95s  217 evals
+[47/50] seed=1046     de60: score=      107.83 link= 107.83 km    7.41s  217 evals
+Placed 5 convoy ships over water (rejected 5 land candidates, 10 total attempts).
+[48/50] seed=1047 midpoint: score=       70.22 link=  70.22 km    0.03s  1 evals
+[48/50] seed=1047     grid: score=       68.40 link=  68.40 km   15.18s  406 evals
+[48/50] seed=1047      de1: score=       70.22 link=  70.22 km    1.01s  28 evals
+[48/50] seed=1047     de10: score=       67.07 link=  67.07 km    8.55s  265 evals
+[48/50] seed=1047     de60: score=       67.07 link=  67.07 km    8.19s  265 evals
+Placed 5 convoy ships over water (rejected 5 land candidates, 10 total attempts).
+[49/50] seed=1048 midpoint: score=      108.47 link= 108.47 km    0.04s  1 evals
+[49/50] seed=1048     grid: score=      105.49 link= 105.49 km   17.27s  406 evals
+[49/50] seed=1048      de1: score=      108.47 link= 108.47 km    1.01s  25 evals
+[49/50] seed=1048     de10: score=      103.87 link= 103.87 km    8.83s  241 evals
+[49/50] seed=1048     de60: score=      103.87 link= 103.87 km    8.94s  241 evals
+Placed 5 convoy ships over water (rejected 14 land candidates, 19 total attempts).
+[50/50] seed=1049 midpoint: score=       98.42 link=  98.42 km    0.03s  1 evals
+[50/50] seed=1049     grid: score=       95.93 link=  95.93 km   16.97s  406 evals
+[50/50] seed=1049      de1: score=       98.42 link=  98.42 km    1.03s  27 evals
+[50/50] seed=1049     de10: score=       95.75 link=  95.75 km    6.58s  193 evals
+[50/50] seed=1049     de60: score=       95.75 link=  95.75 km    6.53s  193 evals
+
+Wrote /home/user/ns-3-dev/flying-pigs/results/cb72992/placement_benchmark.csv
+
+Mean over 50 scenarios:
+   method        score  link_km   dE_km   dN_km   alt_m   time_s   evals
+ midpoint       111.66   111.66    0.00    0.00    3800     0.03       1
+     grid       107.38   107.38    0.43   -0.22    1546    15.37     406
+      de1       110.83   110.83   -0.45   -0.44    3533     1.02      29
+     de10       106.57   106.57   -0.38   -0.47    1706     6.29     203
+     de60       106.56   106.56   -0.39   -0.45    1706     6.30     204
