@@ -1,5 +1,5 @@
 diff --git a/simulation/uav_mesh_eval.cc b/simulation/uav_mesh_eval.cc
-index 4f6abad..add44ac 100644
+index 4f6abad..7b3d191 100644
 --- a/simulation/uav_mesh_eval.cc
 +++ b/simulation/uav_mesh_eval.cc
 @@ -1245,6 +1245,7 @@ main(int argc, char* argv[])
@@ -46,17 +46,28 @@ index 4f6abad..add44ac 100644
          internet.SetRoutingHelper(aodv);
      }
      else
-@@ -1831,6 +1849,15 @@ main(int argc, char* argv[])
+@@ -1831,6 +1849,26 @@ main(int argc, char* argv[])
      // independently verified - check *_routes.txt (--printRoutes=1) if you
      // see otherwise.
      const Ipv4Address uavKuAddr = ifKu.GetAddress(nShips);
 +    if (pinDataKu)
 +    {
-+        // Every ship reaches the UAV's Ku address directly on its own Ku interface (on-link, no gateway).
-+        for (uint32_t s = 0; s < nShips; ++s)
++        for (uint32_t n = 0; n < nNodes; ++n)
 +        {
-+            Ptr<Ipv4StaticRouting> sr = staticH.GetStaticRouting(g_nodes.Get(s)->GetObject<Ipv4>());
-+            sr->AddHostRouteTo(uavKuAddr, ifKu.Get(s).second);
++            Ptr<Ipv4StaticRouting> sr = staticH.GetStaticRouting(g_nodes.Get(n)->GetObject<Ipv4>());
++            // Ipv4StaticRouting auto-installs a connected /24 route per interface address. Left in
++            // place, those sit ahead of OLSR and send every L/Ku-subnet packet straight onto the
++            // radio with no relaying (multi-hop telemetry dies). Remove them all...
++            for (uint32_t i = sr->GetNRoutes(); i > 0; --i)
++            {
++                sr->RemoveRoute(i - 1);
++            }
++            // ...and keep ONLY the pin: each ship reaches the UAV's Ku address on its own Ku
++            // interface (on-link). Everything else goes through OLSR as before.
++            if (n < nShips)
++            {
++                sr->AddHostRouteTo(uavKuAddr, ifKu.Get(n).second);
++            }
 +        }
 +    }
      const uint32_t burstPkts = std::max<uint32_t>(1, dataBytes / dataPktSize);
